@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 
 import { FeaturedMeetingCard } from "@/components/meetings/featured-meeting-card";
@@ -13,7 +13,9 @@ import { MeetingsTable } from "@/components/meetings/meetings-table";
 import { MeetingsUpcomingSidebar } from "@/components/meetings/meetings-upcoming-sidebar";
 import { NewMeetingModal } from "@/components/meetings/new-meeting-modal";
 import { Button } from "@/components/ui";
+import { useMeetingsPolling } from "@/hooks/use-meetings-polling";
 import type { Meeting } from "@/lib/meeting-types";
+import { getApiErrorMessage } from "@/lib/axios";
 import { createMeeting, deleteMeeting, getMeetings } from "@/services/meetingService";
 
 type ToastState = {
@@ -34,6 +36,15 @@ export function MeetingsPageContent({ initialMeetings }: MeetingsPageContentProp
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
 
+  const handleMeetingsUpdate = useCallback((nextMeetings: Meeting[]) => {
+    setMeetings(nextMeetings);
+  }, []);
+
+  useMeetingsPolling({
+    meetings,
+    onUpdate: handleMeetingsUpdate,
+  });
+
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(null), 5000);
@@ -41,12 +52,19 @@ export function MeetingsPageContent({ initialMeetings }: MeetingsPageContentProp
   }, [toast]);
 
   const filteredMeetings = useMemo(() => {
-    const tableMeetings = meetings.filter((meeting) => meeting.status !== "requested");
     if (activeTab === "completed") {
-      return tableMeetings.filter((meeting) => meeting.status === "completed");
+      return meetings.filter((meeting) => meeting.status === "completed");
     }
-    return tableMeetings;
+    return meetings;
   }, [meetings, activeTab]);
+
+  const activeMeeting = useMemo(
+    () =>
+      meetings.find(
+        (meeting) => meeting.status === "joining" || meeting.status === "recording",
+      ) ?? null,
+    [meetings],
+  );
 
   const handleStartRecording = async () => {
     const trimmedUrl = meetUrl.trim();
@@ -70,11 +88,14 @@ export function MeetingsPageContent({ initialMeetings }: MeetingsPageContentProp
         title: "Meeting recording started successfully!",
         message: "Your bot will join the meeting shortly.",
       });
-    } catch {
+    } catch (error) {
       setToast({
         type: "error",
         title: "Failed to start recording",
-        message: "Please check the meeting link and try again.",
+        message: getApiErrorMessage(
+          error,
+          "Please check the meeting link and try again.",
+        ),
       });
     } finally {
       setLoading(false);
@@ -123,7 +144,7 @@ export function MeetingsPageContent({ initialMeetings }: MeetingsPageContentProp
         />
       ) : null}
 
-      <FeaturedMeetingCard />
+      {activeMeeting ? <FeaturedMeetingCard meeting={activeMeeting} /> : null}
 
       <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_280px]">
         <section>

@@ -1,44 +1,25 @@
 import Link from "next/link";
-import { Lightbulb, Users, Video } from "lucide-react";
+import { Video } from "lucide-react";
 
-import {
-  MeetingListItem,
-  type MeetingStatus,
-} from "@/components/dashboard/meeting-list-item";
+import { MeetingStatusBadge } from "@/components/meetings/meeting-status-badge";
+import type { Meeting } from "@/lib/meeting-types";
 
-type Meeting = {
-  title: string;
-  subtitle: string;
-  status: MeetingStatus;
-  iconClassName: string;
-  isLive?: boolean;
+type RecentMeetingsProps = {
+  meetings: Meeting[];
 };
 
-const meetings: Meeting[] = [
-  {
-    title: "Q4 Product Roadmap sync",
-    subtitle: "Started 12 mins ago • 8 participants",
-    status: "recording",
-    iconClassName: "bg-indigo-100 text-indigo-600",
-    isLive: true,
-  },
-  {
-    title: "Engineering Weekly standup",
-    subtitle: "Yesterday at 10:00 AM • 45m 12s",
-    status: "summary",
-    iconClassName: "bg-teal-100 text-teal-600",
-  },
-  {
-    title: "Client Onboarding: Acme Corp",
-    subtitle: "Oct 24 at 2:30 PM • 1h 05m",
-    status: "transcribing",
-    iconClassName: "bg-amber-100 text-amber-600",
-  },
-];
+function formatCreatedAt(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
 
-const icons = [Video, Users, Lightbulb] as const;
+export function RecentMeetings({ meetings = [] }: RecentMeetingsProps) {
+  const recentMeetings = meetings.slice(0, 3);
 
-export function RecentMeetings() {
   return (
     <section>
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -51,12 +32,39 @@ export function RecentMeetings() {
         </Link>
       </div>
 
-      <div className="flex flex-col gap-3">
-        {meetings.map((meeting, index) => {
-          const Icon = icons[index];
-          return <MeetingListItem key={meeting.title} {...meeting} icon={Icon} />;
-        })}
-      </div>
+      {recentMeetings.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
+          <p className="text-sm font-medium text-slate-900">No meetings yet</p>
+          <p className="mt-1 text-sm text-slate-500">
+            Start a recording to see your meetings here.
+          </p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {recentMeetings.map((meeting) => (
+            <div
+              key={meeting.id}
+              className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+            >
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600">
+                <Video className="size-5" />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="truncate text-sm font-semibold text-foreground">
+                    {meeting.title}
+                  </p>
+                  <MeetingStatusBadge status={meeting.status} />
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {formatCreatedAt(meeting.createdAt)}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

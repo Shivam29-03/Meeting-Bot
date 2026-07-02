@@ -11,4 +11,7 @@ export const env = {
   nextAuthSecret: requireEnv("NEXTAUTH_SECRET"),
   googleClientId: requireEnv("GOOGLE_CLIENT_ID"),
   googleClientSecret: requireEnv("GOOGLE_CLIENT_SECRET"),
+  mongodbUri: requireEnv("MONGODB_URI"),
+  recallApiKey: requireEnv("RECALL_API"),
+  recallRegion: requireEnv("RECALL_REGION"),
 };

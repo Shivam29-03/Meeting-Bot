@@ -78,10 +78,10 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
         <div className="px-2">
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span>Storage used</span>
-            <span>42%</span>
+            <span>0%</span>
           </div>
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
-            <div className="h-full w-[42%] rounded-full bg-primary" />
+            <div className="h-full w-0 rounded-full bg-primary" />
           </div>
         </div>
 

@@ -66,7 +66,7 @@ const initialIntegrations: Integration[] = [
     id: "calendar",
     name: "Google Calendar",
     description: "Sync upcoming meetings and auto-schedule recordings",
-    connected: true,
+    connected: false,
     icon: <Calendar className="size-5 text-blue-600" />,
     iconClassName: "bg-blue-50",
   },
@@ -74,7 +74,7 @@ const initialIntegrations: Integration[] = [
     id: "meet",
     name: "Google Meet",
     description: "Join and record Google Meet sessions automatically",
-    connected: true,
+    connected: false,
     icon: <GoogleMeetIcon />,
     iconClassName: "bg-emerald-50",
   },
@@ -98,14 +98,14 @@ const initialIntegrations: Integration[] = [
 
 export function SettingsPageContent() {
   const [integrations, setIntegrations] = useState(initialIntegrations);
-  const [autoRecord, setAutoRecord] = useState(true);
-  const [autoJoin, setAutoJoin] = useState(true);
-  const [transcription, setTranscription] = useState(true);
-  const [aiSummary, setAiSummary] = useState(true);
-  const [emailRecap, setEmailRecap] = useState(true);
-  const [meetingReminders, setMeetingReminders] = useState(true);
+  const [autoRecord, setAutoRecord] = useState(false);
+  const [autoJoin, setAutoJoin] = useState(false);
+  const [transcription, setTranscription] = useState(false);
+  const [aiSummary, setAiSummary] = useState(false);
+  const [emailRecap, setEmailRecap] = useState(false);
+  const [meetingReminders, setMeetingReminders] = useState(false);
   const [botStatusAlerts, setBotStatusAlerts] = useState(false);
-  const [botName, setBotName] = useState("MeetingBot Assistant");
+  const [botName, setBotName] = useState("");
   const [saved, setSaved] = useState(false);
 
   const toggleIntegration = (id: string) => {
@@ -272,6 +272,7 @@ export function SettingsPageContent() {
                   id="bot-name"
                   value={botName}
                   onChange={(event) => setBotName(event.target.value)}
+                  placeholder="Enter bot name"
                   className="h-10 rounded-xl"
                 />
               </div>
@@ -281,7 +282,8 @@ export function SettingsPageContent() {
                 </label>
                 <Input
                   id="bot-language"
-                  defaultValue="English (US)"
+                  defaultValue=""
+                  placeholder="—"
                   className="h-10 rounded-xl"
                   readOnly
                 />
@@ -305,7 +307,7 @@ export function SettingsPageContent() {
             <ul className="mt-4 space-y-3">
               {[
                 { label: "Export meeting data", description: "Download transcripts and summaries" },
-                { label: "Retention policy", description: "Recordings kept for 90 days" },
+                { label: "Retention policy", description: "No retention policy set" },
                 { label: "Delete all recordings", description: "Permanently remove stored data" },
               ].map((item) => (
                 <li

@@ -26,14 +26,16 @@ import {
 
 export function ProfilePageContent() {
   const { data: session } = useSession();
-  const displayName = session?.user?.name ?? "Harshitha Rachepalli";
-  const email = session?.user?.email ?? "harshitha@meetingbot.com";
+  const displayName = session?.user?.name ?? "";
+  const email = session?.user?.email ?? "";
   const initials = displayName
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+    ? displayName
+        .split(" ")
+        .map((part) => part[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase()
+    : "?";
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
@@ -63,26 +65,27 @@ export function ProfilePageContent() {
               </button>
             </div>
 
-            <h2 className="mt-4 text-lg font-bold text-foreground">{displayName}</h2>
-            <p className="text-sm text-muted-foreground">Senior Product Manager</p>
+            <h2 className="mt-4 text-lg font-bold text-foreground">
+              {displayName || "—"}
+            </h2>
+            <p className="text-sm text-muted-foreground">—</p>
 
             <div className="mt-3 flex justify-center gap-2">
-              <StatusBadge status="active" label="Active" />
-              <StatusBadge status="pending" label="Pro Plan" className="bg-indigo-100 text-indigo-700" />
+              <StatusBadge status="inactive" label="No plan" className="bg-slate-100 text-slate-600" />
             </div>
 
             <ul className="mt-6 space-y-3 text-left text-sm">
               <li className="flex items-center gap-3 text-muted-foreground">
                 <Mail className="size-4 shrink-0" />
-                <span className="truncate">{email}</span>
+                <span className="truncate">{email || "—"}</span>
               </li>
               <li className="flex items-center gap-3 text-muted-foreground">
                 <MapPin className="size-4 shrink-0" />
-                San Francisco, CA
+                —
               </li>
               <li className="flex items-center gap-3 text-muted-foreground">
                 <Globe className="size-4 shrink-0" />
-                Member since Jan 2024
+                —
               </li>
             </ul>
           </CardContent>
@@ -100,21 +103,21 @@ export function ProfilePageContent() {
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-muted-foreground">Full Name</label>
-                  <Input defaultValue={displayName} className="h-10 rounded-xl" />
+                  <Input defaultValue={displayName} placeholder="—" className="h-10 rounded-xl" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-muted-foreground">Timezone</label>
-                  <Input defaultValue="Pacific Time (PT)" className="h-10 rounded-xl" readOnly />
+                  <Input defaultValue="" placeholder="—" className="h-10 rounded-xl" readOnly />
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-muted-foreground">
                     Interface Language
                   </label>
-                  <Input defaultValue="English (US)" className="h-10 rounded-xl" readOnly />
+                  <Input defaultValue="" placeholder="—" className="h-10 rounded-xl" readOnly />
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-muted-foreground">Company</label>
-                  <Input defaultValue="MeetingBot Inc." className="h-10 rounded-xl" />
+                  <Input defaultValue="" placeholder="—" className="h-10 rounded-xl" />
                 </div>
               </div>
             </CardContent>
@@ -161,11 +164,11 @@ export function ProfilePageContent() {
               </div>
               <div className="mt-4">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">42.5 GB of 100 GB used</span>
-                  <span className="font-medium text-foreground">42%</span>
+                  <span className="text-muted-foreground">0 GB of 0 GB used</span>
+                  <span className="font-medium text-foreground">0%</span>
                 </div>
                 <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-                  <div className="h-full w-[42%] rounded-full bg-primary" />
+                  <div className="h-full w-0 rounded-full bg-primary" />
                 </div>
                 <div className="mt-4 flex gap-4">
                   <button

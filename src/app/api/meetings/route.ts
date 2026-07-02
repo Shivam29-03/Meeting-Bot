@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/lib/auth";
-import { createMeeting, listMeetings } from "@/lib/meeting-store";
+import { createMeeting, listMeetings } from "@/lib/meeting-repository";
+
+function getUserId(session: { user?: { id?: string; email?: string | null } }) {
+  return session.user?.email ?? session.user?.id;
+}
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -11,9 +15,16 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const userId = getUserId(session);
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const meetings = await listMeetings(userId, { syncStatus: true });
+
   return NextResponse.json({
     success: true,
-    meetings: listMeetings(),
+    meetings,
   });
 }
 
@@ -21,6 +32,11 @@ export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
 
   if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const userId = getUserId(session);
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -43,14 +59,27 @@ export async function POST(request: Request) {
     );
   }
 
-  const meeting = createMeeting({
-    meetUrl,
-    title: typeof body.title === "string" ? body.title : undefined,
-    createdBy: session.user?.email ?? undefined,
-  });
+  try {
+    const meeting = await createMeeting({
+      userId,
+      meetUrl,
+      title: typeof body.title === "string" ? body.title : undefined,
+    });
 
-  return NextResponse.json({
-    success: true,
-    meeting,
-  });
+    return NextResponse.json({
+      success: true,
+      meeting,
+    });
+  } catch (error) {
+    console.error("Failed to create meeting:", error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to start meeting recording",
+      },
+      { status: 502 },
+    );
+  }
 }
