@@ -10,6 +10,7 @@ export type Meeting = {
   title: string;
   meetUrl: string;
   createdAt: string;
+  updatedAt?: string;
   status: MeetingStatus;
   createdBy?: string;
 };

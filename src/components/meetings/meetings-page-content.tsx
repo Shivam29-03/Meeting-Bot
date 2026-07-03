@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
+import { useSession } from "next-auth/react";
 
 import { FeaturedMeetingCard } from "@/components/meetings/featured-meeting-card";
 import {
@@ -15,6 +16,11 @@ import { NewMeetingModal } from "@/components/meetings/new-meeting-modal";
 import { Button } from "@/components/ui";
 import { useMeetingsPolling } from "@/hooks/use-meetings-polling";
 import type { Meeting } from "@/lib/meeting-types";
+import {
+  applyMeetingListFilters,
+  defaultMeetingListFilters,
+  type MeetingListFilters,
+} from "@/lib/meeting-list-filters";
 import { getApiErrorMessage } from "@/lib/axios";
 import { createMeeting, deleteMeeting, getMeetings } from "@/services/meetingService";
 
@@ -29,8 +35,14 @@ type MeetingsPageContentProps = {
 };
 
 export function MeetingsPageContent({ initialMeetings }: MeetingsPageContentProps) {
+  const { data: session } = useSession();
+  const currentUserId = session?.user?.email ?? session?.user?.id;
+
   const [meetings, setMeetings] = useState<Meeting[]>(initialMeetings);
   const [activeTab, setActiveTab] = useState<MeetingFilterTab>("all");
+  const [listFilters, setListFilters] = useState<MeetingListFilters>(
+    defaultMeetingListFilters,
+  );
   const [modalOpen, setModalOpen] = useState(false);
   const [meetUrl, setMeetUrl] = useState("");
   const [loading, setLoading] = useState(false);
@@ -52,11 +64,14 @@ export function MeetingsPageContent({ initialMeetings }: MeetingsPageContentProp
   }, [toast]);
 
   const filteredMeetings = useMemo(() => {
+    let result = meetings;
+
     if (activeTab === "completed") {
-      return meetings.filter((meeting) => meeting.status === "completed");
+      result = result.filter((meeting) => meeting.status === "completed");
     }
-    return meetings;
-  }, [meetings, activeTab]);
+
+    return applyMeetingListFilters(result, listFilters, currentUserId);
+  }, [meetings, activeTab, listFilters, currentUserId]);
 
   const activeMeeting = useMemo(
     () =>
@@ -133,7 +148,12 @@ export function MeetingsPageContent({ initialMeetings }: MeetingsPageContentProp
         </Button>
       </div>
 
-      <MeetingFilters activeTab={activeTab} onTabChange={setActiveTab} />
+      <MeetingFilters
+        activeTab={activeTab}
+        filters={listFilters}
+        onTabChange={setActiveTab}
+        onFiltersChange={setListFilters}
+      />
 
       {toast ? (
         <MeetingToast
