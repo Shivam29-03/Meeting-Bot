@@ -15,12 +15,43 @@ export type RecallStatusChange = {
 export type RecallBotDetails = {
   id: string;
   status_changes?: RecallStatusChange[];
-  recordings?: Array<{ id?: string }>;
+  recordings?: Array<{
+    id?: string;
+    media_shortcuts?: {
+      video_mixed?: {
+        data?: {
+          download_url?: string;
+        };
+        download_url?: string;
+      };
+      video_mixed_mp4?: {
+        data?: {
+          download_url?: string;
+        };
+      };
+      transcript?: {
+        data?: {
+          download_url?: string;
+        };
+        download_url?: string;
+      };
+      meeting_metadata?: {
+        data?: {
+          title?: string;
+        };
+        title?: string;
+      };
+    };
+    meeting_metadata?: {
+      title?: string;
+    };
+  }>;
 };
 
 type CreateRecallBotInput = {
   meetingUrl: string;
   botName?: string;
+  userId?: string;
 };
 
 function recallBaseUrl() {
@@ -37,6 +68,7 @@ function recallHeaders() {
 export async function createRecallBot({
   meetingUrl,
   botName = "MeetingBot",
+  userId,
 }: CreateRecallBotInput): Promise<RecallBotResponse> {
   const response = await fetch(`${recallBaseUrl()}/bot/`, {
     method: "POST",
@@ -44,12 +76,12 @@ export async function createRecallBot({
     body: JSON.stringify({
       meeting_url: meetingUrl,
       bot_name: botName,
+      metadata: userId ? { user_id: userId } : undefined,
       recording_config: {
-        transcript: {
-          provider: {
-            recallai_streaming: {},
-          },
-        },
+        video_mixed_mp4: {},
+        video_mixed_layout: "speaker_view",
+        meeting_metadata: {},
+        participant_events: {},
       },
     }),
   });
@@ -62,6 +94,35 @@ export async function createRecallBot({
   }
 
   return (await response.json()) as RecallBotResponse;
+}
+
+export async function createAsyncTranscript(recordingId: string): Promise<any> {
+  const response = await fetch(
+    `${recallBaseUrl()}/recording/${recordingId}/create_transcript/`,
+    {
+      method: "POST",
+      headers: recallHeaders(),
+      body: JSON.stringify({
+        provider: {
+          recallai_async: {
+            language_code: "en",
+          },
+        },
+        diarization: {
+          use_separate_streams_when_available: true,
+        },
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(
+      `Recall async transcript creation failed (${response.status}): ${errorBody || response.statusText}`,
+    );
+  }
+
+  return response.json();
 }
 
 export async function getRecallBot(botId: string): Promise<RecallBotDetails> {

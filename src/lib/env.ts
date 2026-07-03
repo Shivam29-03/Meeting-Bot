@@ -14,4 +14,5 @@ export const env = {
   mongodbUri: requireEnv("MONGODB_URI"),
   recallApiKey: requireEnv("RECALL_API"),
   recallRegion: requireEnv("RECALL_REGION"),
+  recallWebhookSecret: requireEnv("RECALL_WEBHOOK_SECRET"),
 };

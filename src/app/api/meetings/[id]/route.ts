@@ -3,6 +3,9 @@ import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/lib/auth";
 import { deleteMeeting, getMeetingById } from "@/lib/meeting-repository";
+import Meeting from "@/models/Meeting";
+import MeetingTranscript from "@/models/MeetingTranscript";
+import { getRecallBot } from "@/lib/recall";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -31,9 +34,48 @@ export async function GET(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Meeting not found" }, { status: 404 });
   }
 
+  const meetingDoc = await Meeting.findById(id).lean();
+  if (!meetingDoc) {
+    return NextResponse.json({ error: "Meeting not found" }, { status: 404 });
+  }
+
+  let videoUrl: string | null = null;
+  if (meetingDoc.bot_id) {
+    try {
+      const botDetails = await getRecallBot(meetingDoc.bot_id);
+      const recording = botDetails.recordings?.[0];
+      videoUrl =
+        recording?.media_shortcuts?.video_mixed?.data?.download_url ??
+        recording?.media_shortcuts?.video_mixed_mp4?.data?.download_url ??
+        recording?.media_shortcuts?.video_mixed?.download_url ??
+        null;
+    } catch (err) {
+      console.error(
+        `[GET Meeting API] Failed to fetch Recall video URL for bot ${meetingDoc.bot_id}:`,
+        err,
+      );
+    }
+  }
+
+  let segments: any[] = [];
+  try {
+    const transcriptDoc = await MeetingTranscript.findOne({
+      meeting_id: meetingDoc._id,
+    }).lean();
+    if (transcriptDoc) {
+      segments = transcriptDoc.segments || [];
+    }
+  } catch (err) {
+    console.error("[GET Meeting API] Failed to fetch transcript segments from DB:", err);
+  }
+
   return NextResponse.json({
     success: true,
     meeting,
+    video_url: videoUrl,
+    transcript: {
+      segments,
+    },
   });
 }
 
