@@ -1,4 +1,3 @@
-export { Navbar } from "./Navbar";
 export { Button, buttonVariants } from "./button";
 export { Avatar, AvatarFallback, AvatarImage } from "./avatar";
 export {

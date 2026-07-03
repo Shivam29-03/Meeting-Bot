@@ -7,6 +7,7 @@ type MeetingDocument = {
   title?: string | null;
   status: DbMeetingStatus;
   created_at?: Date;
+  updated_at?: Date;
   user_id: string;
   bot_id: string;
 };
@@ -26,6 +27,7 @@ export function toMeetingDto(doc: MeetingDocument): Meeting {
     title: doc.title?.trim() || titleFromUrl(doc.meeting_url),
     meetUrl: doc.meeting_url,
     createdAt: (doc.created_at ?? new Date()).toISOString(),
+    updatedAt: (doc.updated_at ?? doc.created_at ?? new Date()).toISOString(),
     status: dbToAppStatus[doc.status],
     createdBy: doc.user_id,
   };

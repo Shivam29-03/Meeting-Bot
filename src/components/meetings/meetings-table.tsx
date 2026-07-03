@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   CheckCircle2,
   MessageSquare,
@@ -109,12 +110,12 @@ export function MeetingsTable({ meetings, onDelete }: MeetingsTableProps) {
                   </td>
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
-                      <button
-                        type="button"
+                      <Link
+                        href={`/dashboard/meetings/${meeting.id}`}
                         className="text-sm font-medium text-blue-600 hover:text-blue-700"
                       >
                         View
-                      </button>
+                      </Link>
                       <Button
                         variant="ghost"
                         size="icon-sm"
