@@ -314,71 +314,9 @@ export function MeetingDetailContent({
           </Card>
 
           <Card className="border-slate-200 shadow-sm ring-0">
-            <CardContent className="p-0">
-              <div className="flex items-center justify-between gap-3 border-b border-slate-200">
-                <div className="flex">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("transcript")}
-                    className={cn(
-                      "px-5 py-3 text-sm font-semibold transition-colors",
-                      activeTab === "transcript"
-                        ? "border-b-2 border-primary text-primary"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    Transcript
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("summary")}
-                    className={cn(
-                      "px-5 py-3 text-sm font-semibold transition-colors",
-                      activeTab === "summary"
-                        ? "border-b-2 border-primary text-primary"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    AI Summary
-                  </button>
-                </div>
-                {activeTab === "transcript" && canDownloadTranscript ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mr-3 shrink-0 gap-2 text-primary hover:text-primary"
-                    onClick={handleDownloadTranscript}
-                  >
-                    <Download className="size-4" />
-                    Download
-                  </Button>
-                ) : null}
-              </div>
-
-              <div className="p-0">
-                {activeTab === "transcript" ? (
-                  <MeetingTranscriptPanel
-                    meeting={meeting}
-                    segments={transcriptSegments}
-                    activeSegmentIndex={activeSegmentIndex}
-                    hasVideo={Boolean(videoUrl)}
-                    onSeek={seekToSegment}
-                  />
-                ) : (
-                  <div className="p-5 sm:p-6">
-                    <SummaryPanel meeting={meeting} />
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <aside className="flex flex-col gap-4">
-          <Card className="border-slate-200 shadow-sm ring-0">
             <CardContent className="py-5">
               <h2 className="text-sm font-semibold text-foreground">Meeting details</h2>
-              <dl className="mt-4 space-y-4 text-sm">
+              <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2">
                 <div className="flex items-start gap-3">
                   <Calendar className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                   <div>
@@ -424,11 +362,74 @@ export function MeetingDetailContent({
                   href={meeting.meetUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="mt-5 inline-flex h-10 w-full items-center justify-center rounded-xl bg-slate-900 text-sm font-semibold text-white hover:bg-slate-800"
+                  className="mt-5 inline-flex h-10 w-full items-center justify-center rounded-xl bg-slate-900 text-sm font-semibold text-white hover:bg-slate-800 sm:w-auto sm:px-8"
                 >
                   Join Call
                 </a>
               ) : null}
+            </CardContent>
+          </Card>
+        </div>
+
+        <aside className="flex flex-col gap-4">
+          <Card className="sticky top-6 flex max-h-[calc(100vh-6rem)] flex-col overflow-hidden border-slate-200 shadow-sm ring-0">
+            <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200">
+                <div className="flex">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("transcript")}
+                    className={cn(
+                      "px-5 py-3 text-sm font-semibold transition-colors",
+                      activeTab === "transcript"
+                        ? "border-b-2 border-primary text-primary"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    Transcript
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("summary")}
+                    className={cn(
+                      "px-5 py-3 text-sm font-semibold transition-colors",
+                      activeTab === "summary"
+                        ? "border-b-2 border-primary text-primary"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    AI Summary
+                  </button>
+                </div>
+                {activeTab === "transcript" && canDownloadTranscript ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mr-3 shrink-0 gap-2 text-primary hover:text-primary"
+                    onClick={handleDownloadTranscript}
+                  >
+                    <Download className="size-4" />
+                  
+                  </Button>
+                ) : null}
+              </div>
+
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                {activeTab === "transcript" ? (
+                  <MeetingTranscriptPanel
+                    meeting={meeting}
+                    segments={transcriptSegments}
+                    activeSegmentIndex={activeSegmentIndex}
+                    hasVideo={Boolean(videoUrl)}
+                    onSeek={seekToSegment}
+                    fillHeight
+                  />
+                ) : (
+                  <div className="overflow-y-auto p-5 sm:p-6">
+                    <SummaryPanel meeting={meeting} />
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
 

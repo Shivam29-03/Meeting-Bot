@@ -24,6 +24,7 @@ type MeetingTranscriptPanelProps = {
   activeSegmentIndex: number | null;
   hasVideo: boolean;
   onSeek: (segment: TranscriptSegment, index: number) => void;
+  fillHeight?: boolean;
 };
 
 function formatTimestamp(seconds: number) {
@@ -90,9 +91,11 @@ export function MeetingTranscriptPanel({
   activeSegmentIndex,
   hasVideo,
   onSeek,
+  fillHeight = false,
 }: MeetingTranscriptPanelProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [syncWithAudio, setSyncWithAudio] = useState(hasVideo);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const segmentRefs = useRef<Array<HTMLDivElement | null>>([]);
   const speakerColors = useMemo(() => new Map<string, string>(), []);
 
@@ -116,9 +119,22 @@ export function MeetingTranscriptPanel({
       return;
     }
 
-    segmentRefs.current[activeSegmentIndex]?.scrollIntoView({
+    const container = scrollContainerRef.current;
+    const segment = segmentRefs.current[activeSegmentIndex];
+    if (!container || !segment) {
+      return;
+    }
+
+    const segmentTop =
+      segment.getBoundingClientRect().top -
+      container.getBoundingClientRect().top +
+      container.scrollTop;
+    const targetScrollTop =
+      segmentTop - container.clientHeight / 2 + segment.clientHeight / 2;
+
+    container.scrollTo({
+      top: Math.max(0, targetScrollTop),
       behavior: "smooth",
-      block: "center",
     });
   }, [activeSegmentIndex, syncWithAudio]);
 
@@ -151,8 +167,8 @@ export function MeetingTranscriptPanel({
   }
 
   return (
-    <div className="flex flex-col">
-      <div className="border-b border-slate-200 px-4 py-3 sm:px-5">
+    <div className={cn("flex flex-col", fillHeight && "min-h-0 flex-1")}>
+      <div className="shrink-0 border-b border-slate-200 px-4 py-3 sm:px-5">
         <div className="relative">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -164,7 +180,13 @@ export function MeetingTranscriptPanel({
         </div>
       </div>
 
-      <div className="max-h-[520px] overflow-y-auto px-4 py-2 sm:px-5">
+      <div
+        ref={scrollContainerRef}
+        className={cn(
+          "overflow-y-auto px-4 py-2 sm:px-5",
+          fillHeight ? "min-h-0 flex-1" : "max-h-[520px]",
+        )}
+      >
         {filteredSegments.length === 0 ? (
           <p className="py-10 text-center text-sm text-muted-foreground">
             No transcript lines match your search.
@@ -217,7 +239,7 @@ export function MeetingTranscriptPanel({
       </div>
 
       {hasVideo ? (
-        <div className="flex justify-center border-t border-slate-100 px-4 py-3">
+        <div className="flex shrink-0 justify-center border-t border-slate-100 px-4 py-3">
           <Button
             type="button"
             variant="outline"
