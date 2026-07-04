@@ -156,10 +156,10 @@ flowchart LR
     User[User] -->|POST /api/meetings| App[Next.js App]
     App -->|Create bot| Recall[Recall.ai]
     Recall -->|Joins call| Meeting[Video Meeting]
-    Recall -->|Webhooks| Webhook[/api/webhooks/recall]
-    Webhook -->|Update status & transcript| MongoDB[(MongoDB)]
+    Recall -->|Webhooks| Webhook["/api/webhooks/recall"]
+    Webhook -->|Update status and transcript| MongoDB[(MongoDB)]
     App -->|Read data| MongoDB
-    User -->|View recording & transcript| Dashboard[Dashboard]
+    User -->|View recording and transcript| Dashboard[Dashboard]
 ```
 
 ## Deployment
