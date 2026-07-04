@@ -1,4 +1,5 @@
-import type { Meeting } from "@/lib/meeting-types";
+import { getMeetingDetail } from "@/lib/meeting-detail";
+import type { Meeting, MeetingDetail } from "@/lib/meeting-types";
 import { getMeetingById, listMeetings } from "@/lib/meeting-repository";
 
 export type MeetingsLoadResult = {
@@ -8,6 +9,11 @@ export type MeetingsLoadResult = {
 
 export type MeetingLoadResult = {
   meeting: Meeting | null;
+  error: string | null;
+};
+
+export type MeetingDetailLoadResult = {
+  detail: MeetingDetail | null;
   error: string | null;
 };
 
@@ -37,6 +43,20 @@ export async function loadMeetingsForUser(userId: string): Promise<MeetingsLoadR
     return { meetings, error: null };
   } catch (error) {
     return formatDbError(error);
+  }
+}
+
+export async function loadMeetingDetailForUser(
+  meetingId: string,
+  userId: string,
+): Promise<MeetingDetailLoadResult> {
+  try {
+    const detail = await getMeetingDetail(meetingId, userId);
+    return { detail, error: null };
+  } catch (error) {
+    console.error("Failed to load meeting detail:", error);
+    const result = formatDbError(error);
+    return { detail: null, error: result.error };
   }
 }
 

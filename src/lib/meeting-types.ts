@@ -15,6 +15,22 @@ export type Meeting = {
   createdBy?: string;
 };
 
+export type TranscriptSegment = {
+  speaker: string;
+  speaker_id: number;
+  start: number;
+  end: number;
+  text: string;
+};
+
+export type MeetingDetail = {
+  meeting: Meeting;
+  videoUrl: string | null;
+  transcriptSegments: TranscriptSegment[];
+  durationSeconds: number | null;
+  participants: string[];
+};
+
 export type CreateMeetingPayload = {
   title?: string;
   meetUrl: string;

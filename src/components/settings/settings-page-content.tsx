@@ -19,16 +19,14 @@ import {
   Input,
   StatusBadge,
 } from "@/components/ui";
+import {
+  DEFAULT_BOT_NAME,
+  type IntegrationId,
+  type UserSettings,
+} from "@/lib/user-settings-types";
+import { getApiErrorMessage } from "@/lib/axios";
+import { saveSettings } from "@/services/settingsService";
 import { cn } from "@/lib/utils";
-
-type Integration = {
-  id: string;
-  name: string;
-  description: string;
-  connected: boolean;
-  icon: React.ReactNode;
-  iconClassName: string;
-};
 
 function GoogleMeetIcon() {
   return (
@@ -61,12 +59,17 @@ function TeamsIcon() {
   );
 }
 
-const initialIntegrations: Integration[] = [
+const integrationMeta: Array<{
+  id: IntegrationId;
+  name: string;
+  description: string;
+  icon: React.ReactNode;
+  iconClassName: string;
+}> = [
   {
     id: "calendar",
     name: "Google Calendar",
     description: "Sync upcoming meetings and auto-schedule recordings",
-    connected: false,
     icon: <Calendar className="size-5 text-blue-600" />,
     iconClassName: "bg-blue-50",
   },
@@ -74,7 +77,6 @@ const initialIntegrations: Integration[] = [
     id: "meet",
     name: "Google Meet",
     description: "Join and record Google Meet sessions automatically",
-    connected: false,
     icon: <GoogleMeetIcon />,
     iconClassName: "bg-emerald-50",
   },
@@ -82,7 +84,6 @@ const initialIntegrations: Integration[] = [
     id: "zoom",
     name: "Zoom",
     description: "Connect your Zoom account for seamless bot deployment",
-    connected: false,
     icon: <ZoomIcon />,
     iconClassName: "bg-sky-50",
   },
@@ -90,35 +91,69 @@ const initialIntegrations: Integration[] = [
     id: "teams",
     name: "Microsoft Teams",
     description: "Enable recording for Teams meetings and channels",
-    connected: false,
     icon: <TeamsIcon />,
     iconClassName: "bg-indigo-50",
   },
 ];
 
-export function SettingsPageContent() {
-  const [integrations, setIntegrations] = useState(initialIntegrations);
-  const [autoRecord, setAutoRecord] = useState(false);
-  const [autoJoin, setAutoJoin] = useState(false);
-  const [transcription, setTranscription] = useState(false);
-  const [aiSummary, setAiSummary] = useState(false);
-  const [emailRecap, setEmailRecap] = useState(false);
-  const [meetingReminders, setMeetingReminders] = useState(false);
-  const [botStatusAlerts, setBotStatusAlerts] = useState(false);
-  const [botName, setBotName] = useState("");
-  const [saved, setSaved] = useState(false);
+type SettingsPageContentProps = {
+  initialSettings: UserSettings;
+};
 
-  const toggleIntegration = (id: string) => {
-    setIntegrations((current) =>
-      current.map((item) =>
-        item.id === id ? { ...item, connected: !item.connected } : item,
-      ),
-    );
+export function SettingsPageContent({ initialSettings }: SettingsPageContentProps) {
+  const [integrations, setIntegrations] = useState(initialSettings.integrations);
+  const [autoRecord, setAutoRecord] = useState(initialSettings.autoRecord);
+  const [autoJoin, setAutoJoin] = useState(initialSettings.autoJoin);
+  const [transcription, setTranscription] = useState(initialSettings.transcription);
+  const [aiSummary, setAiSummary] = useState(initialSettings.aiSummary);
+  const [emailRecap, setEmailRecap] = useState(initialSettings.emailRecap);
+  const [meetingReminders, setMeetingReminders] = useState(initialSettings.meetingReminders);
+  const [botStatusAlerts, setBotStatusAlerts] = useState(initialSettings.botStatusAlerts);
+  const [botName, setBotName] = useState(initialSettings.botName);
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const toggleIntegration = (id: IntegrationId) => {
+    setIntegrations((current) => ({
+      ...current,
+      [id]: !current[id],
+    }));
   };
 
-  const handleSave = () => {
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 2500);
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+
+    try {
+      const response = await saveSettings({
+        botName,
+        autoRecord,
+        autoJoin,
+        transcription,
+        aiSummary,
+        emailRecap,
+        meetingReminders,
+        botStatusAlerts,
+        integrations,
+      });
+
+      setBotName(response.settings.botName);
+      setAutoRecord(response.settings.autoRecord);
+      setAutoJoin(response.settings.autoJoin);
+      setTranscription(response.settings.transcription);
+      setAiSummary(response.settings.aiSummary);
+      setEmailRecap(response.settings.emailRecap);
+      setMeetingReminders(response.settings.meetingReminders);
+      setBotStatusAlerts(response.settings.botStatusAlerts);
+      setIntegrations(response.settings.integrations);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2500);
+    } catch (saveError) {
+      setError(getApiErrorMessage(saveError, "Failed to save settings"));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -130,10 +165,20 @@ export function SettingsPageContent() {
             Configure integrations, notifications, and recording preferences.
           </p>
         </div>
-        <Button className="h-10 shrink-0 rounded-xl px-5 text-sm font-semibold" onClick={handleSave}>
-          {saved ? "Saved!" : "Save Changes"}
+        <Button
+          className="h-10 shrink-0 rounded-xl px-5 text-sm font-semibold"
+          onClick={() => void handleSave()}
+          disabled={saving}
+        >
+          {saving ? "Saving..." : saved ? "Saved!" : "Save Changes"}
         </Button>
       </div>
+
+      {error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      ) : null}
 
       <Card className="border-slate-200 shadow-sm ring-0">
         <CardContent className="py-5">
@@ -146,7 +191,7 @@ export function SettingsPageContent() {
           </p>
 
           <ul className="mt-5 divide-y divide-slate-100">
-            {integrations.map((integration) => (
+            {integrationMeta.map((integration) => (
               <li
                 key={integration.id}
                 className="flex flex-col gap-4 py-4 sm:flex-row sm:items-center sm:justify-between"
@@ -164,10 +209,10 @@ export function SettingsPageContent() {
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-sm font-semibold text-foreground">{integration.name}</p>
                       <StatusBadge
-                        status={integration.connected ? "active" : "inactive"}
-                        label={integration.connected ? "Connected" : "Not connected"}
+                        status={integrations[integration.id] ? "active" : "inactive"}
+                        label={integrations[integration.id] ? "Connected" : "Not connected"}
                         className={
-                          integration.connected
+                          integrations[integration.id]
                             ? undefined
                             : "bg-slate-100 text-slate-600"
                         }
@@ -179,12 +224,12 @@ export function SettingsPageContent() {
                   </div>
                 </div>
                 <Button
-                  variant={integration.connected ? "outline" : "default"}
+                  variant={integrations[integration.id] ? "outline" : "default"}
                   size="sm"
                   className="shrink-0 rounded-lg"
                   onClick={() => toggleIntegration(integration.id)}
                 >
-                  {integration.connected ? "Disconnect" : "Connect"}
+                  {integrations[integration.id] ? "Disconnect" : "Connect"}
                 </Button>
               </li>
             ))}
@@ -272,9 +317,12 @@ export function SettingsPageContent() {
                   id="bot-name"
                   value={botName}
                   onChange={(event) => setBotName(event.target.value)}
-                  placeholder="Enter bot name"
+                  placeholder={DEFAULT_BOT_NAME}
                   className="h-10 rounded-xl"
                 />
+                <p className="text-xs text-muted-foreground">
+                  Leave blank to use the default name ({DEFAULT_BOT_NAME}).
+                </p>
               </div>
               <div className="space-y-2">
                 <label htmlFor="bot-language" className="text-xs font-medium text-muted-foreground">

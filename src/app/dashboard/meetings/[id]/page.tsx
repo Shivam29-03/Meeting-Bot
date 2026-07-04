@@ -6,7 +6,7 @@ import { MeetingDetailContent } from "@/components/meetings/meeting-detail-conte
 import { DashboardHeader } from "@/components/layout/dashboard-header";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { authOptions } from "@/lib/auth";
-import { loadMeetingForUser } from "@/lib/load-meetings";
+import { loadMeetingDetailForUser } from "@/lib/load-meetings";
 
 type MeetingDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -25,7 +25,7 @@ export default async function MeetingDetailPage({ params }: MeetingDetailPagePro
   }
 
   const { id } = await params;
-  const { meeting, error: dbError } = await loadMeetingForUser(id, userId);
+  const { detail, error: dbError } = await loadMeetingDetailForUser(id, userId);
 
   if (dbError) {
     return (
@@ -37,13 +37,19 @@ export default async function MeetingDetailPage({ params }: MeetingDetailPagePro
     );
   }
 
-  if (!meeting) {
+  if (!detail) {
     notFound();
   }
 
   return (
     <DashboardShell header={<DashboardHeader />}>
-      <MeetingDetailContent initialMeeting={meeting} />
+      <MeetingDetailContent
+        initialMeeting={detail.meeting}
+        initialVideoUrl={detail.videoUrl}
+        initialTranscriptSegments={detail.transcriptSegments}
+        initialDurationSeconds={detail.durationSeconds}
+        initialParticipants={detail.participants}
+      />
     </DashboardShell>
   );
 }

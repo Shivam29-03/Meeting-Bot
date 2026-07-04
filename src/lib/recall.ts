@@ -17,6 +17,8 @@ export type RecallBotDetails = {
   status_changes?: RecallStatusChange[];
   recordings?: Array<{
     id?: string;
+    started_at?: string | null;
+    completed_at?: string | null;
     media_shortcuts?: {
       video_mixed?: {
         data?: {
@@ -34,6 +36,11 @@ export type RecallBotDetails = {
           download_url?: string;
         };
         download_url?: string;
+      };
+      participant_events?: {
+        data?: {
+          participants_download_url?: string | null;
+        };
       };
       meeting_metadata?: {
         data?: {

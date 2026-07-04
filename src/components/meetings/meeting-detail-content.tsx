@@ -2,27 +2,35 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   Calendar,
   Clock,
   Download,
   Link2,
-  Play,
   Sparkles,
   Trash2,
   Users,
 } from "lucide-react";
 
 import { MeetingStatusBadge } from "@/components/meetings/meeting-status-badge";
+import { MeetingTranscriptPanel } from "@/components/meetings/meeting-transcript-panel";
 import { Button, Card, CardContent } from "@/components/ui";
-import type { Meeting } from "@/lib/meeting-types";
-import { getMeetingById, deleteMeeting } from "@/services/meetingService";
+import type { Meeting, TranscriptSegment } from "@/lib/meeting-types";
+import {
+  downloadMeetingExport,
+  downloadTranscriptFile,
+} from "@/lib/meeting-export";
+import { deleteMeeting, getMeetingById } from "@/services/meetingService";
 import { cn } from "@/lib/utils";
 
 type MeetingDetailContentProps = {
   initialMeeting: Meeting;
+  initialVideoUrl?: string | null;
+  initialTranscriptSegments?: TranscriptSegment[];
+  initialDurationSeconds?: number | null;
+  initialParticipants?: string[];
 };
 
 type DetailTab = "transcript" | "summary";
@@ -40,17 +48,21 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
-function formatDuration(startedAt: string) {
-  const elapsedMs = Date.now() - new Date(startedAt).getTime();
-  const totalMinutes = Math.max(1, Math.floor(elapsedMs / 60000));
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
+function formatDurationFromSeconds(totalSeconds: number) {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
 
   if (hours > 0) {
     return `${hours}h ${minutes}m`;
   }
 
-  return `${minutes}m`;
+  if (minutes > 0) {
+    return `${minutes}m ${remainingSeconds}s`;
+  }
+
+  return `${remainingSeconds}s`;
 }
 
 function platformLabel(url: string) {
@@ -66,15 +78,57 @@ function platformLabel(url: string) {
   return "Video conference";
 }
 
-export function MeetingDetailContent({ initialMeeting }: MeetingDetailContentProps) {
+function formatDurationLabel(
+  meeting: Meeting,
+  durationSeconds: number | null,
+  isActive: boolean,
+) {
+  if (durationSeconds === null) {
+    return "Not available";
+  }
+
+  if (isActive) {
+    return `${formatDurationFromSeconds(durationSeconds)} so far`;
+  }
+
+  return formatDurationFromSeconds(durationSeconds);
+}
+
+function formatParticipantsLabel(participants: string[], isActive: boolean) {
+  if (participants.length > 0) {
+    return participants.join(", ");
+  }
+
+  return isActive ? "Detecting participants..." : "None detected";
+}
+
+export function MeetingDetailContent({
+  initialMeeting,
+  initialVideoUrl = null,
+  initialTranscriptSegments = [],
+  initialDurationSeconds = null,
+  initialParticipants = [],
+}: MeetingDetailContentProps) {
   const router = useRouter();
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [meeting, setMeeting] = useState(initialMeeting);
+  const [videoUrl, setVideoUrl] = useState<string | null>(initialVideoUrl);
+  const [transcriptSegments, setTranscriptSegments] =
+    useState<TranscriptSegment[]>(initialTranscriptSegments);
+  const [durationSeconds, setDurationSeconds] = useState<number | null>(initialDurationSeconds);
+  const [participants, setParticipants] = useState<string[]>(initialParticipants);
+  const [activeSegmentIndex, setActiveSegmentIndex] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<DetailTab>("transcript");
   const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const isActive = ACTIVE_STATUSES.has(meeting.status);
   const isCompleted = meeting.status === "completed";
   const isFailed = meeting.status === "failed";
+  const shouldPollForAssets =
+    isActive ||
+    (isCompleted &&
+      (!videoUrl || transcriptSegments.length === 0 || participants.length === 0));
 
   const refreshMeeting = useCallback(async () => {
     try {
@@ -82,13 +136,44 @@ export function MeetingDetailContent({ initialMeeting }: MeetingDetailContentPro
       if (data.meeting) {
         setMeeting(data.meeting);
       }
+      setVideoUrl(data.videoUrl ?? null);
+      setTranscriptSegments(data.transcriptSegments ?? []);
+      setDurationSeconds(data.durationSeconds ?? null);
+      setParticipants(data.participants ?? []);
     } catch (error) {
       console.error("Failed to refresh meeting:", error);
     }
   }, [meeting.id]);
 
+  const seekToSegment = useCallback((segment: TranscriptSegment, index: number) => {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+
+    video.currentTime = segment.start;
+    setActiveSegmentIndex(index);
+    void video.play().catch(() => {
+      // Autoplay may be blocked until the user interacts with the page.
+    });
+  }, []);
+
+  const handleVideoTimeUpdate = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || transcriptSegments.length === 0) {
+      return;
+    }
+
+    const currentTime = video.currentTime;
+    const nextIndex = transcriptSegments.findIndex(
+      (segment) => currentTime >= segment.start && currentTime < segment.end,
+    );
+
+    setActiveSegmentIndex(nextIndex >= 0 ? nextIndex : null);
+  }, [transcriptSegments]);
+
   useEffect(() => {
-    if (!isActive) {
+    if (!shouldPollForAssets) {
       return;
     }
 
@@ -97,7 +182,7 @@ export function MeetingDetailContent({ initialMeeting }: MeetingDetailContentPro
     }, 10000);
 
     return () => window.clearInterval(intervalId);
-  }, [isActive, refreshMeeting]);
+  }, [shouldPollForAssets, refreshMeeting]);
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -110,6 +195,29 @@ export function MeetingDetailContent({ initialMeeting }: MeetingDetailContentPro
       setDeleting(false);
     }
   };
+
+  const handleDownloadTranscript = useCallback(() => {
+    downloadTranscriptFile(meeting.title, transcriptSegments);
+  }, [meeting.title, transcriptSegments]);
+
+  const handleExport = useCallback(async () => {
+    setExporting(true);
+    try {
+      await downloadMeetingExport({
+        meetingId: meeting.id,
+        meetingTitle: meeting.title,
+        segments: transcriptSegments,
+        hasVideo: Boolean(videoUrl),
+      });
+    } catch (error) {
+      console.error("Failed to export meeting:", error);
+    } finally {
+      setExporting(false);
+    }
+  }, [meeting.id, meeting.title, transcriptSegments, videoUrl]);
+
+  const canDownloadTranscript = transcriptSegments.length > 0;
+  const canExport = canDownloadTranscript || Boolean(videoUrl);
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
@@ -142,9 +250,14 @@ export function MeetingDetailContent({ initialMeeting }: MeetingDetailContentPro
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" className="h-10 rounded-xl px-4" disabled={!isCompleted}>
+            <Button
+              variant="outline"
+              className="h-10 rounded-xl px-4"
+              disabled={!canExport || exporting}
+              onClick={() => void handleExport()}
+            >
               <Download className="size-4" />
-              Export
+              {exporting ? "Exporting..." : "Export"}
             </Button>
             <Button
               variant="outline"
@@ -161,10 +274,19 @@ export function MeetingDetailContent({ initialMeeting }: MeetingDetailContentPro
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="flex flex-col gap-6">
-          <Card className="overflow-hidden border-slate-200 shadow-sm ring-0">
-            <div className="relative aspect-video bg-gradient-to-br from-slate-800 via-slate-900 to-brand-navy">
-              {isActive ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white">
+          <Card className="gap-0 overflow-hidden border-slate-200 p-0 shadow-sm ring-0">
+            <div className="relative aspect-video overflow-hidden bg-black">
+              {videoUrl ? (
+                <video
+                  ref={videoRef}
+                  src={videoUrl}
+                  controls
+                  preload="metadata"
+                  onTimeUpdate={handleVideoTimeUpdate}
+                  className="block h-full w-full object-cover"
+                />
+              ) : isActive ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-slate-800 via-slate-900 to-brand-navy text-white">
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold tracking-wide uppercase">
                     <span className="size-2 animate-pulse rounded-full bg-red-400" />
                     {meeting.status === "recording" ? "Recording in progress" : "Bot joining meeting"}
@@ -174,20 +296,17 @@ export function MeetingDetailContent({ initialMeeting }: MeetingDetailContentPro
                   </p>
                 </div>
               ) : isFailed ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center text-white">
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-slate-800 via-slate-900 to-brand-navy px-6 text-center text-white">
                   <p className="text-sm font-semibold">Recording unavailable</p>
                   <p className="max-w-sm text-sm text-slate-300">
                     The bot could not complete this meeting. Try starting a new recording.
                   </p>
                 </div>
               ) : (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white">
-                  <div className="flex size-16 items-center justify-center rounded-full bg-white/10 backdrop-blur">
-                    <Play className="size-7 fill-white text-white" />
-                  </div>
-                  <p className="text-sm font-medium">Recording ready</p>
-                  <p className="max-w-sm text-center text-sm text-slate-300">
-                    Video playback will be enabled when storage is connected.
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-slate-800 via-slate-900 to-brand-navy px-6 text-center text-white">
+                  <p className="text-sm font-semibold">Video not available</p>
+                  <p className="max-w-sm text-sm text-slate-300">
+                    The recording is still processing or was not saved for this meeting.
                   </p>
                 </div>
               )}
@@ -196,38 +315,59 @@ export function MeetingDetailContent({ initialMeeting }: MeetingDetailContentPro
 
           <Card className="border-slate-200 shadow-sm ring-0">
             <CardContent className="p-0">
-              <div className="flex border-b border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("transcript")}
-                  className={cn(
-                    "px-5 py-3 text-sm font-semibold transition-colors",
-                    activeTab === "transcript"
-                      ? "border-b-2 border-primary text-primary"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  Transcript
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("summary")}
-                  className={cn(
-                    "px-5 py-3 text-sm font-semibold transition-colors",
-                    activeTab === "summary"
-                      ? "border-b-2 border-primary text-primary"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  AI Summary
-                </button>
+              <div className="flex items-center justify-between gap-3 border-b border-slate-200">
+                <div className="flex">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("transcript")}
+                    className={cn(
+                      "px-5 py-3 text-sm font-semibold transition-colors",
+                      activeTab === "transcript"
+                        ? "border-b-2 border-primary text-primary"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    Transcript
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("summary")}
+                    className={cn(
+                      "px-5 py-3 text-sm font-semibold transition-colors",
+                      activeTab === "summary"
+                        ? "border-b-2 border-primary text-primary"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    AI Summary
+                  </button>
+                </div>
+                {activeTab === "transcript" && canDownloadTranscript ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mr-3 shrink-0 gap-2 text-primary hover:text-primary"
+                    onClick={handleDownloadTranscript}
+                  >
+                    <Download className="size-4" />
+                    Download
+                  </Button>
+                ) : null}
               </div>
 
-              <div className="p-5 sm:p-6">
+              <div className="p-0">
                 {activeTab === "transcript" ? (
-                  <TranscriptPanel meeting={meeting} />
+                  <MeetingTranscriptPanel
+                    meeting={meeting}
+                    segments={transcriptSegments}
+                    activeSegmentIndex={activeSegmentIndex}
+                    hasVideo={Boolean(videoUrl)}
+                    onSeek={seekToSegment}
+                  />
                 ) : (
-                  <SummaryPanel meeting={meeting} />
+                  <div className="p-5 sm:p-6">
+                    <SummaryPanel meeting={meeting} />
+                  </div>
                 )}
               </div>
             </CardContent>
@@ -253,7 +393,7 @@ export function MeetingDetailContent({ initialMeeting }: MeetingDetailContentPro
                   <div>
                     <dt className="text-muted-foreground">Duration</dt>
                     <dd className="font-medium text-foreground">
-                      {isActive ? `${formatDuration(meeting.createdAt)} so far` : "—"}
+                      {formatDurationLabel(meeting, durationSeconds, isActive)}
                     </dd>
                   </div>
                 </div>
@@ -261,7 +401,9 @@ export function MeetingDetailContent({ initialMeeting }: MeetingDetailContentPro
                   <Users className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                   <div>
                     <dt className="text-muted-foreground">Participants</dt>
-                    <dd className="font-medium text-foreground">—</dd>
+                    <dd className="font-medium text-foreground">
+                      {formatParticipantsLabel(participants, isActive)}
+                    </dd>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
@@ -311,94 +453,17 @@ export function MeetingDetailContent({ initialMeeting }: MeetingDetailContentPro
   );
 }
 
-function TranscriptPanel({ meeting }: { meeting: Meeting }) {
-  if (meeting.status === "completed") {
-    return (
-      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center">
-        <p className="text-sm font-medium text-slate-900">Transcript processing</p>
-        <p className="mt-1 text-sm text-slate-500">
-          Your transcript will appear here once Recall finishes processing the recording.
-        </p>
-      </div>
-    );
-  }
-
-  if (meeting.status === "failed") {
-    return (
-      <div className="rounded-xl border border-dashed border-red-200 bg-red-50 px-6 py-12 text-center">
-        <p className="text-sm font-medium text-red-900">Transcript unavailable</p>
-        <p className="mt-1 text-sm text-red-700">
-          This meeting did not complete successfully, so no transcript was generated.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <span className="size-2 animate-pulse rounded-full bg-violet-500" />
-        Live transcription in progress...
-      </div>
-      <div className="space-y-3">
-        <TranscriptLine speaker="Speaker 1" time="00:00" text="Waiting for transcript segments..." muted />
-      </div>
-    </div>
-  );
-}
-
 function SummaryPanel({ meeting }: { meeting: Meeting }) {
-  if (meeting.status !== "completed") {
-    return (
-      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center">
-        <p className="text-sm font-medium text-slate-900">Summary not ready</p>
-        <p className="mt-1 text-sm text-slate-500">
-          AI summary will be generated after the meeting ends and the transcript is processed.
-        </p>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <p className="text-xs font-semibold tracking-wide text-primary uppercase">
-          Key takeaways
-        </p>
-        <p className="mt-2 text-sm text-muted-foreground">
-          AI-generated summary will appear here once the summary feature is connected.
-        </p>
-      </div>
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          Action items
-        </p>
-        <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-          <li>—</li>
-        </ul>
-      </div>
-    </div>
-  );
-}
-
-function TranscriptLine({
-  speaker,
-  time,
-  text,
-  muted = false,
-}: {
-  speaker: string;
-  time: string;
-  text: string;
-  muted?: boolean;
-}) {
-  return (
-    <div className={cn("rounded-xl border border-slate-200 p-4", muted && "opacity-70")}>
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-foreground">{speaker}</p>
-        <p className="text-xs text-muted-foreground">{time}</p>
-      </div>
-      <p className="mt-2 text-sm leading-relaxed text-slate-600">{text}</p>
+    <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center">
+      <p className="text-sm font-medium text-slate-900">Summary not ready</p>
+      <p className="mt-1 text-sm text-slate-500">
+        {meeting.status === "completed"
+          ? "AI summary will appear here once the summary feature is connected."
+          : meeting.status === "failed"
+            ? "No summary is available for meetings that did not complete successfully."
+            : "AI summary will be generated after the meeting ends and the transcript is processed."}
+      </p>
     </div>
   );
 }

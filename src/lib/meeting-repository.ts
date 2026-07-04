@@ -14,6 +14,7 @@ import {
   getLatestRecallStatusChange,
   getRecallBot,
 } from "@/lib/recall";
+import { getBotNameForUser } from "@/lib/user-settings";
 
 type CreateMeetingInput = {
   userId: string;
@@ -167,9 +168,11 @@ export async function createMeeting({
 }: CreateMeetingInput): Promise<MeetingDto> {
   await ensureDb();
 
+  const botName = await getBotNameForUser(userId);
+
   const recallBot = await createRecallBot({
     meetingUrl: meetUrl,
-    botName: "MeetingBot",
+    botName,
     userId,
   });
 

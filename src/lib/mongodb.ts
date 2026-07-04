@@ -1,6 +1,4 @@
-import { execFile } from "node:child_process";
 import dns from "node:dns/promises";
-import { promisify } from "node:util";
 import { MongoClient } from "mongodb";
 import mongoose from "mongoose";
 
@@ -22,7 +20,14 @@ const cached = global.mongooseCache ?? {
 
 global.mongooseCache = cached;
 
-const execFileAsync = promisify(execFile);
+const PUBLIC_DNS_SERVERS = ["8.8.8.8", "8.8.4.4", "1.1.1.1"];
+
+const MONGOOSE_CONNECT_OPTIONS = {
+  dbName: "meetingbot",
+  serverSelectionTimeoutMS: 30000,
+  connectTimeoutMS: 15000,
+  family: 4 as const,
+};
 
 function isSrvDnsError(error: unknown) {
   return (
@@ -47,22 +52,60 @@ function parseSrvUri(srvUri: string) {
 }
 
 async function resolveSrvHosts(clusterHost: string): Promise<string[]> {
-  if (process.platform === "win32") {
-    const { stdout } = await execFileAsync("powershell", [
-      "-NoProfile",
-      "-Command",
-      `(Resolve-DnsName -Name '_mongodb._tcp.${clusterHost}' -Type SRV -ErrorAction Stop | Select-Object -ExpandProperty NameTarget) -join ','`,
-    ]);
+  const srvName = `_mongodb._tcp.${clusterHost}`;
 
-    return stdout
-      .trim()
-      .split(",")
-      .map((host) => host.trim())
-      .filter(Boolean);
+  try {
+    const records = await dns.resolveSrv(srvName);
+    return records.map((record) => record.name);
+  } catch (error) {
+    if (!isSrvDnsError(error)) {
+      throw error;
+    }
   }
 
-  const records = await dns.resolveSrv(`_mongodb._tcp.${clusterHost}`);
-  return records.map((record) => record.name);
+  dns.setServers(PUBLIC_DNS_SERVERS);
+  try {
+    const records = await dns.resolveSrv(srvName);
+    return records.map((record) => record.name);
+  } finally {
+    dns.setServers([]);
+  }
+}
+
+function guessAtlasReplicaSetName(host: string): string | null {
+  const match = host.match(/^ac-([a-z0-9]+)-shard-\d+/i);
+  return match ? `atlas-${match[1]}-shard-0` : null;
+}
+
+async function probeReplicaSetName(
+  hosts: string[],
+  encodedUser: string,
+  encodedPassword: string,
+): Promise<string | null> {
+  for (const host of hosts) {
+    const probeUri = `mongodb://${encodedUser}:${encodedPassword}@${host}:27017/?ssl=true&authSource=admin&directConnection=true`;
+    const client = new MongoClient(probeUri, {
+      serverSelectionTimeoutMS: 8000,
+      connectTimeoutMS: 8000,
+      family: 4,
+    });
+
+    try {
+      await client.connect();
+      const hello = await client.db("admin").command({ hello: 1 });
+      const replicaSetName =
+        typeof hello.setName === "string" ? hello.setName : null;
+      if (replicaSetName) {
+        return replicaSetName;
+      }
+    } catch {
+      // Try the next resolved host.
+    } finally {
+      await client.close().catch(() => undefined);
+    }
+  }
+
+  return guessAtlasReplicaSetName(hosts[0]);
 }
 
 async function buildReplicaSetUri(srvUri: string): Promise<string> {
@@ -78,15 +121,12 @@ async function buildReplicaSetUri(srvUri: string): Promise<string> {
 
   const encodedUser = encodeURIComponent(parsed.user);
   const encodedPassword = encodeURIComponent(parsed.password);
-  const probeUri = `mongodb://${encodedUser}:${encodedPassword}@${hosts[0]}:27017/?ssl=true&authSource=admin&directConnection=true`;
+  const replicaSetName = await probeReplicaSetName(
+    hosts,
+    encodedUser,
+    encodedPassword,
+  );
 
-  const client = new MongoClient(probeUri);
-  await client.connect();
-  const hello = await client.db("admin").command({ hello: 1 });
-  await client.close();
-
-  const replicaSetName =
-    typeof hello.setName === "string" ? hello.setName : undefined;
   if (!replicaSetName) {
     throw new Error("Unable to determine MongoDB replica set name");
   }
@@ -105,11 +145,7 @@ async function resolveMongoUri(uri: string): Promise<string> {
     return cached.resolvedUri;
   }
 
-  if (!uri.startsWith("mongodb+srv://")) {
-    return uri;
-  }
-
-  if (process.platform === "win32") {
+  if (uri.startsWith("mongodb+srv://")) {
     const replicaUri = await buildReplicaSetUri(uri);
     cached.resolvedUri = replicaUri;
     return replicaUri;
@@ -120,11 +156,7 @@ async function resolveMongoUri(uri: string): Promise<string> {
 
 async function connectWithUri(uri: string) {
   const connectionUri = await resolveMongoUri(uri);
-
-  return mongoose.connect(connectionUri, {
-    dbName: "meetingbot",
-    serverSelectionTimeoutMS: 10000,
-  });
+  return mongoose.connect(connectionUri, MONGOOSE_CONNECT_OPTIONS);
 }
 
 export async function connectDB() {
@@ -143,13 +175,13 @@ export async function connectDB() {
   if (!cached.promise) {
     cached.promise = connectWithUri(MONGODB_URI)
       .catch(async (error) => {
-        if (isSrvDnsError(error) && MONGODB_URI.startsWith("mongodb+srv://")) {
+        if (
+          MONGODB_URI.startsWith("mongodb+srv://") &&
+          !cached.resolvedUri
+        ) {
           const replicaUri = await buildReplicaSetUri(MONGODB_URI);
           cached.resolvedUri = replicaUri;
-          return mongoose.connect(replicaUri, {
-            dbName: "meetingbot",
-            serverSelectionTimeoutMS: 10000,
-          });
+          return mongoose.connect(replicaUri, MONGOOSE_CONNECT_OPTIONS);
         }
 
         cached.promise = null;
