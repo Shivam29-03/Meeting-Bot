@@ -102,6 +102,20 @@ function formatParticipantsLabel(participants: string[], isActive: boolean) {
   return isActive ? "Detecting participants..." : "None detected";
 }
 
+function failedMeetingMessage(subCode?: string | null) {
+  switch (subCode) {
+    case "google_meet_bot_blocked":
+      return "The bot was blocked from joining this Google Meet.";
+    case "google_meet.login_required":
+    case "google_meet_login_not_available":
+      return "This meeting requires a signed-in Google account, so the bot couldn't join.";
+    case "recording_permission_denied":
+      return "The host declined the recording request.";
+    default:
+      return "The bot couldn't record this meeting. Please try again.";
+  }
+}
+
 export function MeetingDetailContent({
   initialMeeting,
   initialVideoUrl = null,
@@ -299,7 +313,7 @@ export function MeetingDetailContent({
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-slate-800 via-slate-900 to-brand-navy px-6 text-center text-white">
                   <p className="text-sm font-semibold">Recording unavailable</p>
                   <p className="max-w-sm text-sm text-slate-300">
-                    The bot could not complete this meeting. Try starting a new recording.
+                    {failedMeetingMessage(meeting.subCode)}
                   </p>
                 </div>
               ) : (

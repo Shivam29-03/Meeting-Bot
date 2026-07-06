@@ -20,9 +20,25 @@ export async function createMeeting(data: CreateMeetingPayload) {
   return response.data;
 }
 
-export async function getMeetings() {
+export type GetMeetingsOptions = {
+  limit?: number;
+  cursor?: string;
+};
+
+export const MEETINGS_PAGE_SIZE = 50;
+
+export async function getMeetings(options?: GetMeetingsOptions) {
+  const params = new URLSearchParams();
+  if (options?.limit !== undefined) {
+    params.set("limit", String(options.limit));
+  }
+  if (options?.cursor) {
+    params.set("cursor", options.cursor);
+  }
+
+  const query = params.toString();
   const response = await api.get<{ success: boolean; meetings: Meeting[] }>(
-    "/api/meetings",
+    query ? `/api/meetings?${query}` : "/api/meetings",
   );
   return response.data;
 }

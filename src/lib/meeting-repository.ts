@@ -29,6 +29,23 @@ const ACTIVE_DB_STATUSES: DbMeetingStatus[] = [
   "recording",
 ];
 
+const TERMINAL_DB_STATUSES: DbMeetingStatus[] = ["done", "failed"];
+
+function shouldSkipBotStatusUpdate(
+  currentStatus: DbMeetingStatus,
+  newStatus: DbMeetingStatus,
+): boolean {
+  if (!TERMINAL_DB_STATUSES.includes(currentStatus)) {
+    return false;
+  }
+
+  if (currentStatus === "done") {
+    return true;
+  }
+
+  return newStatus !== "done";
+}
+
 async function ensureDb() {
   await connectDB();
 }
@@ -93,6 +110,11 @@ export async function syncMeetingStatusFromRecall(botId: string): Promise<Meetin
 
   const recordingId = recallBot.recordings?.find((recording) => recording.id)?.id;
 
+  const existing = await Meeting.findOne({ bot_id: botId }).lean();
+  if (existing && shouldSkipBotStatusUpdate(existing.status, dbStatus)) {
+    return toMeetingDto(existing);
+  }
+
   const meeting = await Meeting.findOneAndUpdate(
     { bot_id: botId },
     {
@@ -107,9 +129,11 @@ export async function syncMeetingStatusFromRecall(botId: string): Promise<Meetin
 }
 
 async function syncActiveMeetings(userId: string) {
+  const thirtySecondsAgo = new Date(Date.now() - 30_000);
   const activeMeetings = await Meeting.find({
     user_id: userId,
     status: { $in: ACTIVE_DB_STATUSES },
+    updated_at: { $lt: thirtySecondsAgo },
   }).lean();
 
   await Promise.allSettled(
@@ -117,9 +141,18 @@ async function syncActiveMeetings(userId: string) {
   );
 }
 
+export async function countActiveMeetings(userId: string): Promise<number> {
+  await ensureDb();
+
+  return Meeting.countDocuments({
+    user_id: userId,
+    status: { $in: ACTIVE_DB_STATUSES },
+  });
+}
+
 export async function listMeetings(
   userId: string,
-  options?: { syncStatus?: boolean },
+  options?: { syncStatus?: boolean; limit?: number; cursor?: string },
 ): Promise<MeetingDto[]> {
   await ensureDb();
 
@@ -131,8 +164,19 @@ export async function listMeetings(
     }
   }
 
-  const meetings = await Meeting.find({ user_id: userId })
+  const limit = Math.min(Math.max(options?.limit ?? 50, 1), 100);
+  const query: { user_id: string; created_at?: { $lt: Date } } = { user_id: userId };
+
+  if (options?.cursor) {
+    const cursorDate = new Date(options.cursor);
+    if (!Number.isNaN(cursorDate.getTime())) {
+      query.created_at = { $lt: cursorDate };
+    }
+  }
+
+  const meetings = await Meeting.find(query)
     .sort({ created_at: -1 })
+    .limit(limit)
     .lean();
 
   return meetings.map((meeting) => toMeetingDto(meeting));
@@ -197,6 +241,13 @@ export async function createMeeting({
     meeting_url: meetUrl,
     title: title?.trim() || titleFromUrl(meetUrl),
     status: initialStatus,
+  }).catch(async (error) => {
+    try {
+      await deleteRecallBot(recallBot.id);
+    } catch (deleteError) {
+      console.error("Failed to delete Recall bot after Meeting.create failure:", deleteError);
+    }
+    throw error;
   });
 
   return toMeetingDto(meeting);
@@ -238,6 +289,14 @@ export async function updateMeetingStatusFromRecallWebhook(payload: any) {
     const update = extractWebhookUpdate(payload);
     if (!update) {
       return null;
+    }
+
+    const existing = await Meeting.findOne({ bot_id: update.botId }).lean();
+    if (existing && shouldSkipBotStatusUpdate(existing.status, update.dbStatus)) {
+      console.log(
+        `[Webhook] Skipping bot status downgrade for bot ${update.botId}: ${existing.status} -> ${update.dbStatus}`,
+      );
+      return toMeetingDto(existing);
     }
 
     const meeting = await Meeting.findOneAndUpdate(

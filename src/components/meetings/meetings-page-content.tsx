@@ -22,7 +22,25 @@ import {
   type MeetingListFilters,
 } from "@/lib/meeting-list-filters";
 import { getApiErrorMessage } from "@/lib/axios";
-import { createMeeting, deleteMeeting, getMeetings } from "@/services/meetingService";
+import {
+  createMeeting,
+  deleteMeeting,
+  getMeetings,
+  MEETINGS_PAGE_SIZE,
+} from "@/services/meetingService";
+
+function mergeMeetingsFromPoll(current: Meeting[], freshPage: Meeting[]): Meeting[] {
+  const freshById = new Map(freshPage.map((meeting) => [meeting.id, meeting]));
+  const currentIds = new Set(current.map((meeting) => meeting.id));
+  const updated = current.map((meeting) => freshById.get(meeting.id) ?? meeting);
+  const brandNew = freshPage.filter((meeting) => !currentIds.has(meeting.id));
+
+  if (brandNew.length === 0) {
+    return updated;
+  }
+
+  return [...brandNew, ...updated];
+}
 
 type ToastState = {
   type: "success" | "error";
@@ -39,6 +57,10 @@ export function MeetingsPageContent({ initialMeetings }: MeetingsPageContentProp
   const currentUserId = session?.user?.email ?? session?.user?.id;
 
   const [meetings, setMeetings] = useState<Meeting[]>(initialMeetings);
+  const [hasMore, setHasMore] = useState(
+    initialMeetings.length >= MEETINGS_PAGE_SIZE,
+  );
+  const [loadingMore, setLoadingMore] = useState(false);
   const [activeTab, setActiveTab] = useState<MeetingFilterTab>("all");
   const [listFilters, setListFilters] = useState<MeetingListFilters>(
     defaultMeetingListFilters,
@@ -48,8 +70,8 @@ export function MeetingsPageContent({ initialMeetings }: MeetingsPageContentProp
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
 
-  const handleMeetingsUpdate = useCallback((nextMeetings: Meeting[]) => {
-    setMeetings(nextMeetings);
+  const handleMeetingsUpdate = useCallback((freshPage: Meeting[]) => {
+    setMeetings((current) => mergeMeetingsFromPoll(current, freshPage));
   }, []);
 
   useMeetingsPolling({
@@ -130,6 +152,32 @@ export function MeetingsPageContent({ initialMeetings }: MeetingsPageContentProp
     }
   };
 
+  const handleLoadMore = async () => {
+    const oldestLoaded = meetings[meetings.length - 1];
+    if (!oldestLoaded || loadingMore || !hasMore) {
+      return;
+    }
+
+    setLoadingMore(true);
+    try {
+      const data = await getMeetings({
+        limit: MEETINGS_PAGE_SIZE,
+        cursor: oldestLoaded.createdAt,
+      });
+      const nextPage = data.meetings ?? [];
+      setMeetings((current) => [...current, ...nextPage]);
+      setHasMore(nextPage.length >= MEETINGS_PAGE_SIZE);
+    } catch (error) {
+      setToast({
+        type: "error",
+        title: "Failed to load more meetings",
+        message: getApiErrorMessage(error, "Please try again."),
+      });
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -170,6 +218,18 @@ export function MeetingsPageContent({ initialMeetings }: MeetingsPageContentProp
         <section>
           <h2 className="mb-4 text-lg font-semibold text-foreground">Recent Activity</h2>
           <MeetingsTable meetings={filteredMeetings} onDelete={handleDelete} />
+          {hasMore ? (
+            <div className="mt-4 flex justify-center">
+              <Button
+                variant="outline"
+                className="h-10 rounded-xl px-6"
+                onClick={() => void handleLoadMore()}
+                disabled={loadingMore}
+              >
+                {loadingMore ? "Loading..." : "Load more"}
+              </Button>
+            </div>
+          ) : null}
         </section>
 
         <div className="xl:sticky xl:top-24 xl:self-start">

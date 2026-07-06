@@ -12,6 +12,7 @@ export type Meeting = {
   createdAt: string;
   updatedAt?: string;
   status: MeetingStatus;
+  subCode?: string | null;
   createdBy?: string;
 };
 

@@ -86,7 +86,7 @@ export async function createRecallBot({
       metadata: userId ? { user_id: userId } : undefined,
       recording_config: {
         video_mixed_mp4: {},
-        video_mixed_layout: "speaker_view",
+        video_mixed_layout: "gallery_view_v2",
         meeting_metadata: {},
         participant_events: {},
       },

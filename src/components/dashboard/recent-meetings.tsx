@@ -42,9 +42,10 @@ export function RecentMeetings({ meetings = [] }: RecentMeetingsProps) {
       ) : (
         <div className="flex flex-col gap-3">
           {recentMeetings.map((meeting) => (
-            <div
+            <Link
               key={meeting.id}
-              className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+              href={`/dashboard/meetings/${meeting.id}`}
+              className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
             >
               <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600">
                 <Video className="size-5" />
@@ -61,7 +62,7 @@ export function RecentMeetings({ meetings = [] }: RecentMeetingsProps) {
                   {formatCreatedAt(meeting.createdAt)}
                 </p>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       )}
