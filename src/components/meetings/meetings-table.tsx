@@ -122,12 +122,21 @@ export function MeetingsTable({ meetings, onDelete }: MeetingsTableProps) {
                   </td>
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
-                      <Link
-                        href={`/dashboard/meetings/${meeting.id}`}
-                        className="text-sm font-medium text-blue-600 hover:text-blue-700"
-                      >
-                        View
-                      </Link>
+                      {meeting.status === "failed" ? (
+                        <span
+                          aria-disabled="true"
+                          className="cursor-not-allowed text-sm font-medium text-slate-300"
+                        >
+                          View
+                        </span>
+                      ) : (
+                        <Link
+                          href={`/dashboard/meetings/${meeting.id}`}
+                          className="text-sm font-medium text-blue-600 hover:text-blue-700"
+                        >
+                          View
+                        </Link>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon-sm"
