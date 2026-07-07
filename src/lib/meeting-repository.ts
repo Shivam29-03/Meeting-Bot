@@ -5,7 +5,12 @@ import MeetingTranscript from "@/models/MeetingTranscript";
 import { connectDB } from "@/lib/mongodb";
 import { titleFromUrl, toMeetingDto } from "@/lib/meeting-mapper";
 import type { Meeting as MeetingDto } from "@/lib/meeting-types";
-import { mapRecallCodeToDbStatus, recallEventToDbStatus } from "@/lib/recall-status";
+import {
+  botEverRecorded,
+  deriveFailureReason,
+  mapRecallCodeToDbStatus,
+  recallEventToDbStatus,
+} from "@/lib/recall-status";
 import type { MeetingStatus as DbMeetingStatus } from "@/types/meeting";
 import {
   createAsyncTranscript,
@@ -13,6 +18,7 @@ import {
   deleteRecallBot,
   getLatestRecallStatusChange,
   getRecallBot,
+  type RecallBotDetails,
 } from "@/lib/recall";
 import { getBotNameForUser } from "@/lib/user-settings";
 
@@ -43,7 +49,61 @@ function shouldSkipBotStatusUpdate(
     return true;
   }
 
-  return newStatus !== "done";
+  // failed: only allow bot.* to move to done (e.g. late recovery); never downgrade
+  const earlierStatuses: DbMeetingStatus[] = [
+    "requested",
+    "joining",
+    "in_call",
+    "recording",
+  ];
+  return earlierStatuses.includes(newStatus);
+}
+
+type MeetingLean = {
+  status: DbMeetingStatus;
+  recording_id?: string | null;
+  sub_code?: string | null;
+};
+
+function resolveBotStatusUpdate(
+  existing: MeetingLean,
+  update: {
+    dbStatus: DbMeetingStatus;
+    recordingId?: string;
+    subCode?: string | null;
+  },
+  botDetails?: RecallBotDetails,
+): { status: DbMeetingStatus; subCode?: string | null } {
+  const recordingId = update.recordingId ?? existing.recording_id ?? null;
+  const everRecorded =
+    Boolean(recordingId) || (botDetails ? botEverRecorded(botDetails) : false);
+
+  // Non-terminal events pass straight through.
+  if (update.dbStatus !== "done" && update.dbStatus !== "failed") {
+    return {
+      status: update.dbStatus,
+      subCode: update.subCode ?? existing.sub_code ?? null,
+    };
+  }
+
+  // A fatal event always fails; derive a reason from history when available.
+  if (update.dbStatus === "failed") {
+    const reason = botDetails
+      ? deriveFailureReason(botDetails)
+      : update.subCode ?? existing.sub_code ?? null;
+    return { status: "failed", subCode: reason };
+  }
+
+  // The bot ended (done / call_ended). If it recorded, it's genuinely done.
+  if (everRecorded) {
+    return { status: "done", subCode: existing.sub_code ?? null };
+  }
+
+  // Ended without ever recording => failed with a derived reason.
+  const reason = botDetails
+    ? deriveFailureReason(botDetails)
+    : update.subCode ?? existing.sub_code ?? "no_recording";
+  return { status: "failed", subCode: reason };
 }
 
 async function ensureDb() {
@@ -115,12 +175,24 @@ export async function syncMeetingStatusFromRecall(botId: string): Promise<Meetin
     return toMeetingDto(existing);
   }
 
+  const resolved = existing
+    ? resolveBotStatusUpdate(
+        existing,
+        {
+          dbStatus,
+          recordingId,
+          subCode: latestChange.sub_code,
+        },
+        recallBot,
+      )
+    : { status: dbStatus, subCode: latestChange.sub_code ?? null };
+
   const meeting = await Meeting.findOneAndUpdate(
     { bot_id: botId },
     {
-      status: dbStatus,
+      status: resolved.status,
       ...(recordingId ? { recording_id: recordingId } : {}),
-      ...(latestChange.sub_code ? { sub_code: latestChange.sub_code } : {}),
+      ...(resolved.subCode ? { sub_code: resolved.subCode } : {}),
     },
     { returnDocument: "after" },
   ).lean();
@@ -299,12 +371,30 @@ export async function updateMeetingStatusFromRecallWebhook(payload: any) {
       return toMeetingDto(existing);
     }
 
+    // On terminal events (done / call_ended / fatal) fetch the full bot history
+    // so we can tell whether it ever recorded and derive a failure reason.
+    let botDetails: RecallBotDetails | undefined;
+    if (update.dbStatus === "done" || update.dbStatus === "failed") {
+      try {
+        botDetails = await getRecallBot(update.botId);
+      } catch (error) {
+        console.error(
+          `[Webhook] Failed to fetch bot details for reason derivation (bot ${update.botId}):`,
+          error,
+        );
+      }
+    }
+
+    const resolved = existing
+      ? resolveBotStatusUpdate(existing, update, botDetails)
+      : { status: update.dbStatus, subCode: update.subCode };
+
     const meeting = await Meeting.findOneAndUpdate(
       { bot_id: update.botId },
       {
-        status: update.dbStatus,
+        status: resolved.status,
         ...(update.recordingId ? { recording_id: update.recordingId } : {}),
-        ...(update.subCode ? { sub_code: update.subCode } : {}),
+        ...(resolved.subCode ? { sub_code: resolved.subCode } : {}),
       },
       { returnDocument: "after" },
     ).lean();
@@ -387,7 +477,7 @@ export async function updateMeetingStatusFromRecallWebhook(payload: any) {
           transcript_id: transcriptId || "unknown",
           segments,
         },
-        { upsert: true, new: true },
+        { upsert: true, returnDocument: "after" },
       );
 
       let titleUpdate = {};

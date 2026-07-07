@@ -31,6 +31,7 @@ export function toMeetingDto(doc: MeetingDocument): Meeting {
     updatedAt: (doc.updated_at ?? doc.created_at ?? new Date()).toISOString(),
     status: dbToAppStatus[doc.status],
     subCode: doc.sub_code ?? null,
+    failureReason: doc.status === "failed" ? doc.sub_code ?? null : null,
     createdBy: doc.user_id,
   };
 }

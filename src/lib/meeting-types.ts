@@ -13,6 +13,7 @@ export type Meeting = {
   updatedAt?: string;
   status: MeetingStatus;
   subCode?: string | null;
+  failureReason?: string | null;
   createdBy?: string;
 };
 

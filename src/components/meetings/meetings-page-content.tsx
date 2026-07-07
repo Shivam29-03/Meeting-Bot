@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 
 import { FeaturedMeetingCard } from "@/components/meetings/featured-meeting-card";
@@ -54,6 +55,7 @@ type MeetingsPageContentProps = {
 
 export function MeetingsPageContent({ initialMeetings }: MeetingsPageContentProps) {
   const { data: session } = useSession();
+  const searchParams = useSearchParams();
   const currentUserId = session?.user?.email ?? session?.user?.id;
 
   const [meetings, setMeetings] = useState<Meeting[]>(initialMeetings);
@@ -84,6 +86,14 @@ export function MeetingsPageContent({ initialMeetings }: MeetingsPageContentProp
     const timer = window.setTimeout(() => setToast(null), 5000);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    const retryUrl = searchParams.get("retry");
+    if (retryUrl) {
+      setMeetUrl(retryUrl);
+      setModalOpen(true);
+    }
+  }, [searchParams]);
 
   const filteredMeetings = useMemo(() => {
     let result = meetings;

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 
@@ -27,7 +28,9 @@ export default async function MeetingsPage() {
           <DatabaseErrorBanner message={dbError} />
         </div>
       ) : null}
-      <MeetingsPageContent initialMeetings={meetings} />
+      <Suspense fallback={null}>
+        <MeetingsPageContent initialMeetings={meetings} />
+      </Suspense>
     </DashboardShell>
   );
 }

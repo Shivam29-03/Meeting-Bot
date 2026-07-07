@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AlertTriangle,
   ArrowLeft,
   Calendar,
   Clock,
   Download,
   Link2,
+  RefreshCw,
   Sparkles,
   Trash2,
   Users,
@@ -16,8 +18,14 @@ import {
 
 import { MeetingStatusBadge } from "@/components/meetings/meeting-status-badge";
 import { MeetingTranscriptPanel } from "@/components/meetings/meeting-transcript-panel";
+import { MeetingVideoPlayer } from "@/components/meetings/meeting-video-player";
 import { Button, Card, CardContent } from "@/components/ui";
+import { getFailureReasonContent } from "@/lib/meeting-failure";
 import type { Meeting, TranscriptSegment } from "@/lib/meeting-types";
+import {
+  buildDisplayTranscript,
+  type DisplayTranscriptEntry,
+} from "@/lib/transcript-display";
 import {
   downloadMeetingExport,
   downloadTranscriptFile,
@@ -102,20 +110,6 @@ function formatParticipantsLabel(participants: string[], isActive: boolean) {
   return isActive ? "Detecting participants..." : "None detected";
 }
 
-function failedMeetingMessage(subCode?: string | null) {
-  switch (subCode) {
-    case "google_meet_bot_blocked":
-      return "The bot was blocked from joining this Google Meet.";
-    case "google_meet.login_required":
-    case "google_meet_login_not_available":
-      return "This meeting requires a signed-in Google account, so the bot couldn't join.";
-    case "recording_permission_denied":
-      return "The host declined the recording request.";
-    default:
-      return "The bot couldn't record this meeting. Please try again.";
-  }
-}
-
 export function MeetingDetailContent({
   initialMeeting,
   initialVideoUrl = null,
@@ -131,7 +125,7 @@ export function MeetingDetailContent({
     useState<TranscriptSegment[]>(initialTranscriptSegments);
   const [durationSeconds, setDurationSeconds] = useState<number | null>(initialDurationSeconds);
   const [participants, setParticipants] = useState<string[]>(initialParticipants);
-  const [activeSegmentIndex, setActiveSegmentIndex] = useState<number | null>(null);
+  const [activeDisplayIndex, setActiveDisplayIndex] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<DetailTab>("transcript");
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -139,10 +133,20 @@ export function MeetingDetailContent({
   const isActive = ACTIVE_STATUSES.has(meeting.status);
   const isCompleted = meeting.status === "completed";
   const isFailed = meeting.status === "failed";
+  const isFailedNoRecording = isFailed && !videoUrl;
+  const failureContent = getFailureReasonContent(
+    meeting.failureReason ?? meeting.subCode,
+  );
+  const retryHref = `/dashboard/meetings?retry=${encodeURIComponent(meeting.meetUrl)}`;
   const shouldPollForAssets =
     isActive ||
     (isCompleted &&
       (!videoUrl || transcriptSegments.length === 0 || participants.length === 0));
+
+  const displayEntries = useMemo(
+    () => buildDisplayTranscript(transcriptSegments),
+    [transcriptSegments],
+  );
 
   const refreshMeeting = useCallback(async () => {
     try {
@@ -159,32 +163,21 @@ export function MeetingDetailContent({
     }
   }, [meeting.id]);
 
-  const seekToSegment = useCallback((segment: TranscriptSegment, index: number) => {
-    const video = videoRef.current;
-    if (!video) {
-      return;
-    }
+  const seekToEntry = useCallback(
+    (entry: DisplayTranscriptEntry, displayIndex: number) => {
+      const video = videoRef.current;
+      if (!video) {
+        return;
+      }
 
-    video.currentTime = segment.start;
-    setActiveSegmentIndex(index);
-    void video.play().catch(() => {
-      // Autoplay may be blocked until the user interacts with the page.
-    });
-  }, []);
-
-  const handleVideoTimeUpdate = useCallback(() => {
-    const video = videoRef.current;
-    if (!video || transcriptSegments.length === 0) {
-      return;
-    }
-
-    const currentTime = video.currentTime;
-    const nextIndex = transcriptSegments.findIndex(
-      (segment) => currentTime >= segment.start && currentTime < segment.end,
-    );
-
-    setActiveSegmentIndex(nextIndex >= 0 ? nextIndex : null);
-  }, [transcriptSegments]);
+      video.currentTime = entry.start;
+      setActiveDisplayIndex(displayIndex);
+      void video.play().catch(() => {
+        // Autoplay may be blocked until the user interacts with the page.
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!shouldPollForAssets) {
@@ -264,15 +257,17 @@ export function MeetingDetailContent({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              className="h-10 rounded-xl px-4"
-              disabled={!canExport || exporting}
-              onClick={() => void handleExport()}
-            >
-              <Download className="size-4" />
-              {exporting ? "Exporting..." : "Export"}
-            </Button>
+            {isFailedNoRecording ? null : (
+              <Button
+                variant="outline"
+                className="h-10 rounded-xl px-4"
+                disabled={!canExport || exporting}
+                onClick={() => void handleExport()}
+              >
+                <Download className="size-4" />
+                {exporting ? "Exporting..." : "Export"}
+              </Button>
+            )}
             <Button
               variant="outline"
               className="h-10 rounded-xl px-4 text-destructive hover:text-destructive"
@@ -289,15 +284,20 @@ export function MeetingDetailContent({
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="flex flex-col gap-6">
           <Card className="gap-0 overflow-hidden border-slate-200 p-0 shadow-sm ring-0">
-            <div className="relative aspect-video overflow-hidden bg-black">
+            <div
+              className={cn(
+                "relative overflow-hidden bg-black",
+                !videoUrl && "aspect-video",
+              )}
+            >
               {videoUrl ? (
-                <video
-                  ref={videoRef}
-                  src={videoUrl}
-                  controls
-                  preload="metadata"
-                  onTimeUpdate={handleVideoTimeUpdate}
-                  className="block h-full w-full object-cover"
+                <MeetingVideoPlayer
+                  videoRef={videoRef}
+                  videoUrl={videoUrl}
+                  meetingId={meeting.id}
+                  displayEntries={displayEntries}
+                  activeDisplayIndex={activeDisplayIndex}
+                  onActiveDisplayIndexChange={setActiveDisplayIndex}
                 />
               ) : isActive ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-slate-800 via-slate-900 to-brand-navy text-white">
@@ -310,11 +310,23 @@ export function MeetingDetailContent({
                   </p>
                 </div>
               ) : isFailed ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-slate-800 via-slate-900 to-brand-navy px-6 text-center text-white">
-                  <p className="text-sm font-semibold">Recording unavailable</p>
-                  <p className="max-w-sm text-sm text-slate-300">
-                    {failedMeetingMessage(meeting.subCode)}
-                  </p>
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-gradient-to-br from-slate-800 via-slate-900 to-brand-navy px-6 text-center text-white">
+                  <div className="flex size-12 items-center justify-center rounded-full bg-red-500/15 text-red-300">
+                    <AlertTriangle className="size-6" />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <p className="text-base font-semibold">{failureContent.title}</p>
+                    <p className="mx-auto max-w-sm text-sm text-slate-300">
+                      {failureContent.message}
+                    </p>
+                  </div>
+                  <Link
+                    href={retryHref}
+                    className="inline-flex h-9 items-center gap-2 rounded-xl bg-white/10 px-4 text-sm font-semibold text-white transition-colors hover:bg-white/20"
+                  >
+                    <RefreshCw className="size-4" />
+                    Try again
+                  </Link>
                 </div>
               ) : (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-slate-800 via-slate-900 to-brand-navy px-6 text-center text-white">
@@ -386,6 +398,7 @@ export function MeetingDetailContent({
         </div>
 
         <aside className="flex flex-col gap-4">
+          {isFailedNoRecording ? null : (
           <Card className="sticky top-6 flex max-h-[calc(100vh-6rem)] flex-col overflow-hidden border-slate-200 shadow-sm ring-0">
             <CardContent className="flex min-h-0 flex-1 flex-col p-0">
               <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200">
@@ -432,10 +445,10 @@ export function MeetingDetailContent({
                 {activeTab === "transcript" ? (
                   <MeetingTranscriptPanel
                     meeting={meeting}
-                    segments={transcriptSegments}
-                    activeSegmentIndex={activeSegmentIndex}
+                    displayEntries={displayEntries}
+                    activeDisplayIndex={activeDisplayIndex}
                     hasVideo={Boolean(videoUrl)}
-                    onSeek={seekToSegment}
+                    onSeek={seekToEntry}
                     fillHeight
                   />
                 ) : (
@@ -446,6 +459,7 @@ export function MeetingDetailContent({
               </div>
             </CardContent>
           </Card>
+          )}
 
           <Card className="border-slate-200 bg-gradient-to-br from-primary/5 to-indigo-50 shadow-sm ring-0">
             <CardContent className="py-5">
