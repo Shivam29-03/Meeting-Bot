@@ -52,6 +52,15 @@ const MeetingSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    ai_summary: {
+      type: String,
+      default: null,
+    },
+
+    ai_summary_generated_at: {
+      type: Date,
+      default: null,
+    },
   },
   {
     collection: "meetings",

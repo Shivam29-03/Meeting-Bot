@@ -9,6 +9,7 @@ import type { MeetingDetail, TranscriptSegment } from "@/lib/meeting-types";
 import { getRecallBot } from "@/lib/recall";
 import Meeting from "@/models/Meeting";
 import MeetingTranscript from "@/models/MeetingTranscript";
+import { generateMeetingSummary } from "@/lib/ai-summary";
 
 async function fetchTranscriptSegments(meetingId: string): Promise<TranscriptSegment[]> {
   try {
@@ -42,6 +43,24 @@ export async function getMeetingDetail(
   }
 
   const transcriptSegments = await fetchTranscriptSegments(meetingDoc._id.toString());
+  let aiSummary: string | null = meetingDoc.ai_summary ?? null;
+
+if (
+  !aiSummary &&
+  transcriptSegments.length > 0 &&
+  meeting.status === "completed"
+) {
+  try {
+    aiSummary = await generateMeetingSummary(transcriptSegments);
+
+    await Meeting.findByIdAndUpdate(meetingDoc._id, {
+      ai_summary: aiSummary,
+      ai_summary_generated_at: new Date(),
+    });
+  } catch (error) {
+    console.error("[Meeting Detail] Failed to generate AI summary:", error);
+  }
+}
 
   let videoUrl: string | null = null;
   let recordingDurationSeconds: number | null = null;
@@ -76,5 +95,6 @@ export async function getMeetingDetail(
     transcriptSegments,
     durationSeconds,
     participants,
+    aiSummary,
   };
 }

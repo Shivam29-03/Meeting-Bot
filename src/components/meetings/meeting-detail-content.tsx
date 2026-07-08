@@ -15,7 +15,7 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
-
+import ReactMarkdown from "react-markdown";
 import { MeetingStatusBadge } from "@/components/meetings/meeting-status-badge";
 import { MeetingTranscriptPanel } from "@/components/meetings/meeting-transcript-panel";
 import { MeetingVideoPlayer } from "@/components/meetings/meeting-video-player";
@@ -39,6 +39,7 @@ type MeetingDetailContentProps = {
   initialTranscriptSegments?: TranscriptSegment[];
   initialDurationSeconds?: number | null;
   initialParticipants?: string[];
+  initialAiSummary?: string | null;
 };
 
 type DetailTab = "transcript" | "summary";
@@ -116,6 +117,7 @@ export function MeetingDetailContent({
   initialTranscriptSegments = [],
   initialDurationSeconds = null,
   initialParticipants = [],
+  initialAiSummary = null,
 }: MeetingDetailContentProps) {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -125,6 +127,7 @@ export function MeetingDetailContent({
     useState<TranscriptSegment[]>(initialTranscriptSegments);
   const [durationSeconds, setDurationSeconds] = useState<number | null>(initialDurationSeconds);
   const [participants, setParticipants] = useState<string[]>(initialParticipants);
+  const [summary, setSummary] = useState<string | null>(initialAiSummary);
   const [activeDisplayIndex, setActiveDisplayIndex] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<DetailTab>("transcript");
   const [deleting, setDeleting] = useState(false);
@@ -158,6 +161,7 @@ export function MeetingDetailContent({
       setTranscriptSegments(data.transcriptSegments ?? []);
       setDurationSeconds(data.durationSeconds ?? null);
       setParticipants(data.participants ?? []);
+      setSummary(data.aiSummary ?? null);
     } catch (error) {
       console.error("Failed to refresh meeting:", error);
     }
@@ -397,68 +401,68 @@ export function MeetingDetailContent({
           </Card>
         </div>
 
-        <aside className="flex flex-col gap-4">
+        <aside className="flex flex-col gap-4 max-h-[90vh]">
           {isFailedNoRecording ? null : (
-          <Card className="sticky top-6 flex max-h-[calc(100vh-6rem)] flex-col overflow-hidden border-slate-200 shadow-sm ring-0">
-            <CardContent className="flex min-h-0 flex-1 flex-col p-0">
-              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200">
-                <div className="flex">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("transcript")}
-                    className={cn(
-                      "px-5 py-3 text-sm font-semibold transition-colors",
-                      activeTab === "transcript"
-                        ? "border-b-2 border-primary text-primary"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    Transcript
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("summary")}
-                    className={cn(
-                      "px-5 py-3 text-sm font-semibold transition-colors",
-                      activeTab === "summary"
-                        ? "border-b-2 border-primary text-primary"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    AI Summary
-                  </button>
-                </div>
-                {activeTab === "transcript" && canDownloadTranscript ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mr-3 shrink-0 gap-2 text-primary hover:text-primary"
-                    onClick={handleDownloadTranscript}
-                  >
-                    <Download className="size-4" />
-                  
-                  </Button>
-                ) : null}
-              </div>
-
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                {activeTab === "transcript" ? (
-                  <MeetingTranscriptPanel
-                    meeting={meeting}
-                    displayEntries={displayEntries}
-                    activeDisplayIndex={activeDisplayIndex}
-                    hasVideo={Boolean(videoUrl)}
-                    onSeek={seekToEntry}
-                    fillHeight
-                  />
-                ) : (
-                  <div className="overflow-y-auto p-5 sm:p-6">
-                    <SummaryPanel meeting={meeting} />
+            <Card className="sticky top-6 flex max-h-[calc(100vh-6rem)] flex-col overflow-hidden border-slate-200 shadow-sm ring-0">
+              <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+                <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200">
+                  <div className="flex">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("transcript")}
+                      className={cn(
+                        "px-5 py-3 text-sm font-semibold transition-colors",
+                        activeTab === "transcript"
+                          ? "border-b-2 border-primary text-primary"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      Transcript
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("summary")}
+                      className={cn(
+                        "px-5 py-3 text-sm font-semibold transition-colors",
+                        activeTab === "summary"
+                          ? "border-b-2 border-primary text-primary"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      AI Summary
+                    </button>
                   </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                  {activeTab === "transcript" && canDownloadTranscript ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="mr-3 shrink-0 gap-2 text-primary hover:text-primary"
+                      onClick={handleDownloadTranscript}
+                    >
+                      <Download className="size-4" />
+
+                    </Button>
+                  ) : null}
+                </div>
+
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                  {activeTab === "transcript" ? (
+                    <MeetingTranscriptPanel
+                      meeting={meeting}
+                      displayEntries={displayEntries}
+                      activeDisplayIndex={activeDisplayIndex}
+                      hasVideo={Boolean(videoUrl)}
+                      onSeek={seekToEntry}
+                      fillHeight
+                    />
+                  ) : (
+                    <div className="overflow-y-auto p-5 sm:p-6">
+                      <SummaryPanel meeting={meeting} summary={summary} />
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           )}
 
           <Card className="border-slate-200 bg-gradient-to-br from-primary/5 to-indigo-50 shadow-sm ring-0">
@@ -482,13 +486,34 @@ export function MeetingDetailContent({
   );
 }
 
-function SummaryPanel({ meeting }: { meeting: Meeting }) {
+function SummaryPanel({
+  meeting,
+  summary,
+}: {
+  meeting: Meeting;
+  summary: string | null;
+}) {
+  if (summary) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-5">
+    <div className="prose prose-sm max-w-none">
+        <ReactMarkdown>
+            {summary}
+        </ReactMarkdown>
+    </div>
+</div>
+    );
+  }
+
   return (
     <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center">
-      <p className="text-sm font-medium text-slate-900">Summary not ready</p>
+      <p className="text-sm font-medium text-slate-900">
+        Summary not ready
+      </p>
+
       <p className="mt-1 text-sm text-slate-500">
         {meeting.status === "completed"
-          ? "AI summary will appear here once the summary feature is connected."
+          ? "Generating AI summary..."
           : meeting.status === "failed"
             ? "No summary is available for meetings that did not complete successfully."
             : "AI summary will be generated after the meeting ends and the transcript is processed."}

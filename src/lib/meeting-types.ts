@@ -31,6 +31,7 @@ export type MeetingDetail = {
   transcriptSegments: TranscriptSegment[];
   durationSeconds: number | null;
   participants: string[];
+  aiSummary: string | null;
 };
 
 export type CreateMeetingPayload = {
