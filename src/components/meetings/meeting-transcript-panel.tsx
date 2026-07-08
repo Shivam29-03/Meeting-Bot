@@ -88,35 +88,39 @@ export function MeetingTranscriptPanel({
   );
 
   if (displayEntries.length === 0) {
-    if (meeting.status === "completed") {
-      return (
+    const emptyState =
+      meeting.status === "completed" ? (
         <EmptyState
           title="Transcript processing"
           description="Your transcript will appear here once Recall finishes processing the recording."
         />
-      );
-    }
-
-    if (meeting.status === "failed") {
-      return (
+      ) : meeting.status === "failed" ? (
         <EmptyState
           title="Transcript unavailable"
           description="This meeting did not complete successfully, so no transcript was generated."
           className="border-red-200 bg-red-50"
         />
+      ) : (
+        <EmptyState
+          title="Waiting for transcript"
+          description="Transcript segments will appear here as the meeting is processed."
+        />
       );
-    }
 
     return (
-      <EmptyState
-        title="Waiting for transcript"
-        description="Transcript segments will appear here as the meeting is processed."
-      />
+      <div
+        className={cn(
+          "overflow-y-auto p-4 sm:p-5",
+          fillHeight && "min-h-0 flex-1",
+        )}
+      >
+        {emptyState}
+      </div>
     );
   }
 
   return (
-    <div className={cn("flex flex-col", fillHeight && "min-h-0 flex-1")}>
+    <div className={cn("flex h-full min-h-0 flex-col", fillHeight && "flex-1")}>
       <div className="shrink-0 border-b border-slate-200 px-4 py-3 sm:px-5">
         <div className="relative">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -131,8 +135,8 @@ export function MeetingTranscriptPanel({
 
       <div
         className={cn(
-          "overflow-y-auto px-4 py-2 sm:px-5",
-          fillHeight ? "min-h-0 flex-1" : "max-h-[520px]",
+          "min-h-0 overflow-y-auto overscroll-contain px-4 py-2 sm:px-5",
+          fillHeight ? "flex-1" : "max-h-[520px]",
         )}
       >
         {filteredEntries.length === 0 ? (

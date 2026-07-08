@@ -340,7 +340,7 @@ export function MeetingDetailContent({
         </Card>
 
         {isFailedNoRecording ? null : (
-          <Card className="flex flex-col overflow-hidden border-slate-200 shadow-sm ring-0 lg:h-[26rem]">
+          <Card className="flex min-h-0 flex-col overflow-hidden border-slate-200 shadow-sm ring-0 lg:h-[26rem]">
             <CardContent className="flex min-h-0 flex-1 flex-col p-0">
               <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-2">
                 <h2 className="px-3 py-3 text-sm font-semibold text-foreground">Transcript</h2>
@@ -356,7 +356,7 @@ export function MeetingDetailContent({
                 ) : null}
               </div>
 
-              <div className="min-h-0 flex-1 overflow-hidden">
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <MeetingTranscriptPanel
                   meeting={meeting}
                   displayEntries={displayEntries}
