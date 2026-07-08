@@ -15,4 +15,5 @@ export const env = {
   recallApiKey: requireEnv("RECALL_API"),
   recallRegion: requireEnv("RECALL_REGION"),
   recallWebhookSecret: requireEnv("RECALL_WEBHOOK_SECRET"),
+  openaiApiKey: requireEnv("OPENAI_API_KEY"),
 };

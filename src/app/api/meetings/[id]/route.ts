@@ -41,6 +41,7 @@ export async function GET(_request: Request, context: RouteContext) {
     transcript: {
       segments: detail.transcriptSegments,
     },
+    ai_summary: detail.aiSummary,
   });
 }
 

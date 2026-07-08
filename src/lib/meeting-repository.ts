@@ -5,7 +5,12 @@ import MeetingTranscript from "@/models/MeetingTranscript";
 import { connectDB } from "@/lib/mongodb";
 import { titleFromUrl, toMeetingDto } from "@/lib/meeting-mapper";
 import type { Meeting as MeetingDto } from "@/lib/meeting-types";
-import { mapRecallCodeToDbStatus, recallEventToDbStatus } from "@/lib/recall-status";
+import {
+  botEverRecorded,
+  deriveFailureReason,
+  mapRecallCodeToDbStatus,
+  recallEventToDbStatus,
+} from "@/lib/recall-status";
 import type { MeetingStatus as DbMeetingStatus } from "@/types/meeting";
 import {
   createAsyncTranscript,
@@ -13,6 +18,7 @@ import {
   deleteRecallBot,
   getLatestRecallStatusChange,
   getRecallBot,
+  type RecallBotDetails,
 } from "@/lib/recall";
 import { getBotNameForUser } from "@/lib/user-settings";
 
@@ -28,6 +34,77 @@ const ACTIVE_DB_STATUSES: DbMeetingStatus[] = [
   "in_call",
   "recording",
 ];
+
+const TERMINAL_DB_STATUSES: DbMeetingStatus[] = ["done", "failed"];
+
+function shouldSkipBotStatusUpdate(
+  currentStatus: DbMeetingStatus,
+  newStatus: DbMeetingStatus,
+): boolean {
+  if (!TERMINAL_DB_STATUSES.includes(currentStatus)) {
+    return false;
+  }
+
+  if (currentStatus === "done") {
+    return true;
+  }
+
+  // failed: only allow bot.* to move to done (e.g. late recovery); never downgrade
+  const earlierStatuses: DbMeetingStatus[] = [
+    "requested",
+    "joining",
+    "in_call",
+    "recording",
+  ];
+  return earlierStatuses.includes(newStatus);
+}
+
+type MeetingLean = {
+  status: DbMeetingStatus;
+  recording_id?: string | null;
+  sub_code?: string | null;
+};
+
+function resolveBotStatusUpdate(
+  existing: MeetingLean,
+  update: {
+    dbStatus: DbMeetingStatus;
+    recordingId?: string;
+    subCode?: string | null;
+  },
+  botDetails?: RecallBotDetails,
+): { status: DbMeetingStatus; subCode?: string | null } {
+  const recordingId = update.recordingId ?? existing.recording_id ?? null;
+  const everRecorded =
+    Boolean(recordingId) || (botDetails ? botEverRecorded(botDetails) : false);
+
+  // Non-terminal events pass straight through.
+  if (update.dbStatus !== "done" && update.dbStatus !== "failed") {
+    return {
+      status: update.dbStatus,
+      subCode: update.subCode ?? existing.sub_code ?? null,
+    };
+  }
+
+  // A fatal event always fails; derive a reason from history when available.
+  if (update.dbStatus === "failed") {
+    const reason = botDetails
+      ? deriveFailureReason(botDetails)
+      : update.subCode ?? existing.sub_code ?? null;
+    return { status: "failed", subCode: reason };
+  }
+
+  // The bot ended (done / call_ended). If it recorded, it's genuinely done.
+  if (everRecorded) {
+    return { status: "done", subCode: existing.sub_code ?? null };
+  }
+
+  // Ended without ever recording => failed with a derived reason.
+  const reason = botDetails
+    ? deriveFailureReason(botDetails)
+    : update.subCode ?? existing.sub_code ?? "no_recording";
+  return { status: "failed", subCode: reason };
+}
 
 async function ensureDb() {
   await connectDB();
@@ -93,12 +170,29 @@ export async function syncMeetingStatusFromRecall(botId: string): Promise<Meetin
 
   const recordingId = recallBot.recordings?.find((recording) => recording.id)?.id;
 
+  const existing = await Meeting.findOne({ bot_id: botId }).lean();
+  if (existing && shouldSkipBotStatusUpdate(existing.status, dbStatus)) {
+    return toMeetingDto(existing);
+  }
+
+  const resolved = existing
+    ? resolveBotStatusUpdate(
+        existing,
+        {
+          dbStatus,
+          recordingId,
+          subCode: latestChange.sub_code,
+        },
+        recallBot,
+      )
+    : { status: dbStatus, subCode: latestChange.sub_code ?? null };
+
   const meeting = await Meeting.findOneAndUpdate(
     { bot_id: botId },
     {
-      status: dbStatus,
+      status: resolved.status,
       ...(recordingId ? { recording_id: recordingId } : {}),
-      ...(latestChange.sub_code ? { sub_code: latestChange.sub_code } : {}),
+      ...(resolved.subCode ? { sub_code: resolved.subCode } : {}),
     },
     { returnDocument: "after" },
   ).lean();
@@ -107,9 +201,11 @@ export async function syncMeetingStatusFromRecall(botId: string): Promise<Meetin
 }
 
 async function syncActiveMeetings(userId: string) {
+  const thirtySecondsAgo = new Date(Date.now() - 30_000);
   const activeMeetings = await Meeting.find({
     user_id: userId,
     status: { $in: ACTIVE_DB_STATUSES },
+    updated_at: { $lt: thirtySecondsAgo },
   }).lean();
 
   await Promise.allSettled(
@@ -117,9 +213,18 @@ async function syncActiveMeetings(userId: string) {
   );
 }
 
+export async function countActiveMeetings(userId: string): Promise<number> {
+  await ensureDb();
+
+  return Meeting.countDocuments({
+    user_id: userId,
+    status: { $in: ACTIVE_DB_STATUSES },
+  });
+}
+
 export async function listMeetings(
   userId: string,
-  options?: { syncStatus?: boolean },
+  options?: { syncStatus?: boolean; limit?: number; cursor?: string },
 ): Promise<MeetingDto[]> {
   await ensureDb();
 
@@ -131,8 +236,19 @@ export async function listMeetings(
     }
   }
 
-  const meetings = await Meeting.find({ user_id: userId })
+  const limit = Math.min(Math.max(options?.limit ?? 50, 1), 100);
+  const query: { user_id: string; created_at?: { $lt: Date } } = { user_id: userId };
+
+  if (options?.cursor) {
+    const cursorDate = new Date(options.cursor);
+    if (!Number.isNaN(cursorDate.getTime())) {
+      query.created_at = { $lt: cursorDate };
+    }
+  }
+
+  const meetings = await Meeting.find(query)
     .sort({ created_at: -1 })
+    .limit(limit)
     .lean();
 
   return meetings.map((meeting) => toMeetingDto(meeting));
@@ -197,6 +313,13 @@ export async function createMeeting({
     meeting_url: meetUrl,
     title: title?.trim() || titleFromUrl(meetUrl),
     status: initialStatus,
+  }).catch(async (error) => {
+    try {
+      await deleteRecallBot(recallBot.id);
+    } catch (deleteError) {
+      console.error("Failed to delete Recall bot after Meeting.create failure:", deleteError);
+    }
+    throw error;
   });
 
   return toMeetingDto(meeting);
@@ -240,12 +363,38 @@ export async function updateMeetingStatusFromRecallWebhook(payload: any) {
       return null;
     }
 
+    const existing = await Meeting.findOne({ bot_id: update.botId }).lean();
+    if (existing && shouldSkipBotStatusUpdate(existing.status, update.dbStatus)) {
+      console.log(
+        `[Webhook] Skipping bot status downgrade for bot ${update.botId}: ${existing.status} -> ${update.dbStatus}`,
+      );
+      return toMeetingDto(existing);
+    }
+
+    // On terminal events (done / call_ended / fatal) fetch the full bot history
+    // so we can tell whether it ever recorded and derive a failure reason.
+    let botDetails: RecallBotDetails | undefined;
+    if (update.dbStatus === "done" || update.dbStatus === "failed") {
+      try {
+        botDetails = await getRecallBot(update.botId);
+      } catch (error) {
+        console.error(
+          `[Webhook] Failed to fetch bot details for reason derivation (bot ${update.botId}):`,
+          error,
+        );
+      }
+    }
+
+    const resolved = existing
+      ? resolveBotStatusUpdate(existing, update, botDetails)
+      : { status: update.dbStatus, subCode: update.subCode };
+
     const meeting = await Meeting.findOneAndUpdate(
       { bot_id: update.botId },
       {
-        status: update.dbStatus,
+        status: resolved.status,
         ...(update.recordingId ? { recording_id: update.recordingId } : {}),
-        ...(update.subCode ? { sub_code: update.subCode } : {}),
+        ...(resolved.subCode ? { sub_code: resolved.subCode } : {}),
       },
       { returnDocument: "after" },
     ).lean();
@@ -328,7 +477,7 @@ export async function updateMeetingStatusFromRecallWebhook(payload: any) {
           transcript_id: transcriptId || "unknown",
           segments,
         },
-        { upsert: true, new: true },
+        { upsert: true, returnDocument: "after" },
       );
 
       let titleUpdate = {};

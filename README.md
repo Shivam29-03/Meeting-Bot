@@ -7,10 +7,15 @@ A Next.js app that sends an AI notetaker bot into video meetings, records calls,
 - **Google sign-in** via NextAuth
 - **Meeting bot deployment** to Google Meet, Zoom, or Microsoft Teams through [Recall.ai](https://www.recall.ai/)
 - **Live status tracking** — requested, joining, in call, recording, done, failed
+- **Paginated meeting history** with cursor-based "Load more" on the meetings page
+- **Active recording limit** — up to 3 concurrent recordings per user
+- **Platform URL validation** — only supported meeting links are accepted before a bot is created
 - **Transcripts** with speaker labels and timestamps
 - **Meeting detail page** with video playback, transcript panel, participants, and export
+- **Actionable failure messages** — specific errors when a bot is blocked, login is required, or recording is denied
 - **User settings** — bot name, recording preferences, integrations, and notifications
-- **Webhook-driven updates** from Recall for recording and transcript completion
+- **Webhook-driven updates** from Recall with Svix signature verification
+- **Gallery-view recordings** — mixed MP4 uses Recall's `gallery_view_v2` layout for multi-participant meetings
 
 ## Tech Stack
 
@@ -56,16 +61,13 @@ GOOGLE_CLIENT_SECRET=your-google-client-secret
 # MongoDB Atlas
 MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/
 
-# Optional: use a standard connection string if SRV DNS fails on your network
+# Optional: standard connection string for production or when SRV DNS fails
 # MONGODB_URI_STANDARD=mongodb://<user>:<password>@host1:27017,host2:27017,host3:27017/meetingbot?ssl=true&authSource=admin&replicaSet=...
 
 # Recall.ai
 RECALL_API=your-recall-api-key
 RECALL_REGION=ap-northeast-1
 RECALL_WEBHOOK_SECRET=whsec_your_webhook_secret
-
-# Local webhook tunnel (e.g. ngrok)
-WEBHOOK_URL=https://your-tunnel-url.ngrok-free.dev
 ```
 
 Generate `NEXTAUTH_SECRET`:
@@ -82,11 +84,13 @@ openssl rand -base64 32
 
 The app stores data in the `meetingbot` database across three collections:
 
-- `meetings` — bot sessions, status, recording metadata
+- `meetings` — bot sessions, status, recording metadata, failure sub-codes
 - `meeting_transcripts` — transcript segments per meeting
 - `user_settings` — per-user preferences
 
-> **Windows note:** If `mongodb+srv://` fails due to DNS, the app automatically resolves Atlas hosts via public DNS and connects using a replica-set URI. You can also set `MONGODB_URI_STANDARD` manually.
+> **Windows note:** If `mongodb+srv://` fails due to DNS in development, the app automatically resolves Atlas hosts via public DNS and connects using a replica-set URI. You can also set `MONGODB_URI_STANDARD` manually.
+>
+> **Production note:** In production (`NODE_ENV=production`), the app prefers `MONGODB_URI_STANDARD` when set, and skips the SRV DNS fallback. Set this on Vercel or other hosts where SRV resolution is unreliable.
 
 ### 4. Recall.ai setup
 
@@ -98,7 +102,9 @@ The app stores data in the `meetingbot` database across three collections:
    https://<your-domain>/api/webhooks/recall
    ```
 
-4. For local development, expose your app with [ngrok](https://ngrok.com/) and set `WEBHOOK_URL` accordingly.
+   Copy the webhook signing secret into `RECALL_WEBHOOK_SECRET`. Signature verification is always required — use a real `whsec_...` value even for local development.
+
+4. For local development, expose your app with [ngrok](https://ngrok.com/) (or similar) and register the tunnel URL as the webhook endpoint in the Recall dashboard.
 
 ### 5. Run the dev server
 
@@ -124,7 +130,7 @@ src/
 ├── app/
 │   ├── api/
 │   │   ├── auth/[...nextauth]/   # NextAuth routes
-│   │   ├── meetings/             # CRUD + video download
+│   │   ├── meetings/             # CRUD, pagination, video download
 │   │   ├── settings/             # User settings API
 │   │   └── webhooks/recall/      # Recall webhook handler
 │   ├── dashboard/                # Dashboard, meetings, settings, profile
@@ -133,21 +139,33 @@ src/
 ├── lib/                          # Business logic, DB, Recall client
 ├── models/                       # Mongoose schemas
 ├── services/                     # Client-side API helpers
-└── hooks/                        # React hooks
+└── hooks/                        # React hooks (e.g. meeting status polling)
 ```
 
 ## API Routes
 
 | Method | Route | Description |
 |---|---|---|
-| `GET` | `/api/meetings` | List meetings for the signed-in user |
+| `GET` | `/api/meetings` | List meetings for the signed-in user (supports pagination) |
 | `POST` | `/api/meetings` | Create a meeting and deploy a Recall bot |
 | `GET` | `/api/meetings/[id]` | Get meeting details |
 | `DELETE` | `/api/meetings/[id]` | Delete a meeting and its Recall bot |
-| `GET` | `/api/meetings/[id]/video` | Download meeting recording |
+| `GET` | `/api/meetings/[id]/video` | Stream meeting recording download |
 | `GET` | `/api/settings` | Get user settings |
 | `PUT` | `/api/settings` | Save user settings |
 | `POST` | `/api/webhooks/recall` | Recall.ai webhook endpoint |
+
+### `GET /api/meetings` query parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `limit` | number | Page size (1–100, default 50) |
+| `cursor` | ISO date string | Return meetings created before this timestamp |
+
+### `POST /api/meetings` constraints
+
+- **Supported platforms:** `meet.google.com`, `zoom.us`, `*.zoom.us`, `teams.microsoft.com`, `teams.live.com`
+- **Active limit:** Returns `429` if the user already has 3 recordings in progress (`requested`, `joining`, `in_call`, or `recording`)
 
 ## Meeting Flow
 
@@ -162,13 +180,29 @@ flowchart LR
     User -->|View recording and transcript| Dashboard[Dashboard]
 ```
 
+## Reliability
+
+- **Webhook verification** — all Recall webhooks are verified with Svix before processing
+- **Terminal status protection** — meetings marked `done` or `failed` are not downgraded by late or out-of-order events
+- **Orphan bot cleanup** — if database insert fails after bot creation, the Recall bot is deleted
+- **Throttled status sync** — active meetings are synced from Recall at most once every 30 seconds during list requests
+- **Streamed video downloads** — recordings are proxied without buffering the full file in memory
+
 ## Deployment
 
 Deploy to [Vercel](https://vercel.com/) or any Node.js host that supports Next.js App Router. Set all environment variables in your hosting provider and update:
 
 - `NEXTAUTH_URL` to your production URL
+- `MONGODB_URI_STANDARD` if SRV DNS is unreliable on your host
 - Recall webhook URL to `https://<your-domain>/api/webhooks/recall`
 - MongoDB Atlas network access for your deployment IP
+
+## Branches
+
+| Branch | Purpose |
+|---|---|
+| `Develop` | Active development branch |
+| `main` | Stable / production branch |
 
 ## License
 

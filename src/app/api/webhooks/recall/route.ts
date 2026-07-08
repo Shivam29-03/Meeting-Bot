@@ -4,29 +4,15 @@ import { Webhook } from "svix";
 import { env } from "@/lib/env";
 import { updateMeetingStatusFromRecallWebhook } from "@/lib/meeting-repository";
 
+function extractBotIdFromPayload(payload: {
+  data?: { bot?: { id?: string }; bot_id?: string };
+}) {
+  return payload.data?.bot?.id ?? payload.data?.bot_id ?? "unknown";
+}
+
 export async function POST(request: Request) {
   try {
     const payload = await request.text();
-
-    // Developer-friendly check: bypass signature verification if secret is placeholder
-    if (env.recallWebhookSecret === "whsec_placeholder") {
-      console.warn(
-        "[Webhook] RECALL_WEBHOOK_SECRET is set to placeholder. Skipping signature verification for local testing.",
-      );
-      try {
-        const parsedPayload = JSON.parse(payload);
-        queueMicrotask(async () => {
-          try {
-            await updateMeetingStatusFromRecallWebhook(parsedPayload);
-          } catch (err) {
-            console.error("[Webhook Async Error] Failed processing webhook payload:", err);
-          }
-        });
-        return NextResponse.json({ ok: true });
-      } catch {
-        return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-      }
-    }
 
     const headersList = request.headers;
     const headers = {
@@ -41,16 +27,19 @@ export async function POST(request: Request) {
     }
 
     const wh = new Webhook(env.recallWebhookSecret);
-    const verifiedPayload = wh.verify(payload, headers) as any;
+    const verifiedPayload = wh.verify(payload, headers) as {
+      event?: string;
+      data?: { bot?: { id?: string }; bot_id?: string };
+    };
 
-    // Process asynchronously so we can return 200 response immediately to Recall
-    queueMicrotask(async () => {
-      try {
-        await updateMeetingStatusFromRecallWebhook(verifiedPayload);
-      } catch (err) {
-        console.error("[Webhook Async Error] Failed processing webhook payload:", err);
-      }
-    });
+    try {
+      await updateMeetingStatusFromRecallWebhook(verifiedPayload);
+    } catch (err) {
+      console.error(
+        `[Webhook Processing Error] event=${verifiedPayload.event ?? "unknown"} botId=${extractBotIdFromPayload(verifiedPayload)}`,
+        err,
+      );
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {

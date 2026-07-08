@@ -43,15 +43,23 @@ export async function GET(_request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Failed to fetch video" }, { status: 502 });
     }
 
-    const videoBuffer = await videoResponse.arrayBuffer();
-    const fileName = `${sanitizeMeetingFileName(detail.meeting.title)}-recording.mp4`;
+    if (!videoResponse.body) {
+      return NextResponse.json({ error: "Failed to fetch video" }, { status: 502 });
+    }
 
-    return new NextResponse(videoBuffer, {
-      headers: {
-        "Content-Type": videoResponse.headers.get("content-type") ?? "video/mp4",
-        "Content-Disposition": `attachment; filename="${fileName}"`,
-        "Cache-Control": "no-store",
-      },
+    const fileName = `${sanitizeMeetingFileName(detail.meeting.title)}-recording.mp4`;
+    const responseHeaders: Record<string, string> = {
+      "Content-Type": videoResponse.headers.get("content-type") ?? "video/mp4",
+      "Content-Disposition": `attachment; filename="${fileName}"`,
+      "Cache-Control": "no-store",
+    };
+    const contentLength = videoResponse.headers.get("content-length");
+    if (contentLength) {
+      responseHeaders["Content-Length"] = contentLength;
+    }
+
+    return new NextResponse(videoResponse.body, {
+      headers: responseHeaders,
     });
   } catch (error) {
     console.error("[GET Meeting Video API] Failed to proxy video download:", error);

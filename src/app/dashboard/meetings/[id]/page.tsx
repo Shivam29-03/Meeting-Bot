@@ -48,7 +48,8 @@ export default async function MeetingDetailPage({ params }: MeetingDetailPagePro
         initialVideoUrl={detail.videoUrl}
         initialTranscriptSegments={detail.transcriptSegments}
         initialDurationSeconds={detail.durationSeconds}
-        initialParticipants={detail.participants}
+        initialParticipants={detail.participants} 
+        initialAiSummary={detail.aiSummary}
       />
     </DashboardShell>
   );

@@ -5,10 +5,11 @@ import { useEffect } from "react";
 import type { Meeting } from "@/lib/meeting-types";
 import { getMeetings } from "@/services/meetingService";
 
-const ACTIVE_STATUSES = new Set<Meeting["status"]>([
+const ACTIVE_STATUSES = new Set<Meeting["status"] | "in_call">([
   "requested",
   "joining",
   "recording",
+  "in_call",
 ]);
 
 type UseMeetingsPollingOptions = {

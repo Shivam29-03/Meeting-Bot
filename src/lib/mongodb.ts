@@ -27,6 +27,7 @@ const MONGOOSE_CONNECT_OPTIONS = {
   serverSelectionTimeoutMS: 30000,
   connectTimeoutMS: 15000,
   family: 4 as const,
+  maxPoolSize: 10,
 };
 
 function isSrvDnsError(error: unknown) {
@@ -154,8 +155,16 @@ async function resolveMongoUri(uri: string): Promise<string> {
   return uri;
 }
 
+function getProductionUri(uri: string) {
+  const standardUri = process.env.MONGODB_URI_STANDARD?.trim();
+  return standardUri || uri;
+}
+
 async function connectWithUri(uri: string) {
-  const connectionUri = await resolveMongoUri(uri);
+  const connectionUri =
+    process.env.NODE_ENV === "production"
+      ? getProductionUri(uri)
+      : await resolveMongoUri(uri);
   return mongoose.connect(connectionUri, MONGOOSE_CONNECT_OPTIONS);
 }
 
@@ -176,6 +185,7 @@ export async function connectDB() {
     cached.promise = connectWithUri(MONGODB_URI)
       .catch(async (error) => {
         if (
+          process.env.NODE_ENV !== "production" &&
           MONGODB_URI.startsWith("mongodb+srv://") &&
           !cached.resolvedUri
         ) {

@@ -12,6 +12,8 @@ export type Meeting = {
   createdAt: string;
   updatedAt?: string;
   status: MeetingStatus;
+  subCode?: string | null;
+  failureReason?: string | null;
   createdBy?: string;
 };
 
@@ -29,6 +31,7 @@ export type MeetingDetail = {
   transcriptSegments: TranscriptSegment[];
   durationSeconds: number | null;
   participants: string[];
+  aiSummary: string | null;
 };
 
 export type CreateMeetingPayload = {

@@ -10,6 +10,7 @@ import {
 
 import { MeetingStatusBadge } from "@/components/meetings/meeting-status-badge";
 import { Button } from "@/components/ui";
+import { getFailureReasonContent } from "@/lib/meeting-failure";
 import type { Meeting, MeetingStatus } from "@/lib/meeting-types";
 import { cn } from "@/lib/utils";
 
@@ -99,7 +100,18 @@ export function MeetingsTable({ meetings, onDelete }: MeetingsTableProps) {
                       >
                         <Icon className="size-5" />
                       </div>
-                      <p className="font-medium text-slate-900">{meeting.title}</p>
+                      <div className="min-w-0">
+                        <p className="font-medium text-slate-900">{meeting.title}</p>
+                        {meeting.status === "failed" ? (
+                          <p className="mt-0.5 text-xs font-medium text-red-500">
+                            {
+                              getFailureReasonContent(
+                                meeting.failureReason ?? meeting.subCode,
+                              ).short
+                            }
+                          </p>
+                        ) : null}
+                      </div>
                     </div>
                   </td>
                   <td className="px-5 py-4 text-slate-500">
@@ -110,12 +122,21 @@ export function MeetingsTable({ meetings, onDelete }: MeetingsTableProps) {
                   </td>
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
-                      <Link
-                        href={`/dashboard/meetings/${meeting.id}`}
-                        className="text-sm font-medium text-blue-600 hover:text-blue-700"
-                      >
-                        View
-                      </Link>
+                      {meeting.status === "failed" ? (
+                        <span
+                          aria-disabled="true"
+                          className="cursor-not-allowed text-sm font-medium text-slate-300"
+                        >
+                          View
+                        </span>
+                      ) : (
+                        <Link
+                          href={`/dashboard/meetings/${meeting.id}`}
+                          className="text-sm font-medium text-blue-600 hover:text-blue-700"
+                        >
+                          View
+                        </Link>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon-sm"
