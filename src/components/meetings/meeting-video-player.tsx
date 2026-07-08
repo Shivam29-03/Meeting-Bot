@@ -245,9 +245,9 @@ export function MeetingVideoPlayer({
       ref={containerRef}
       tabIndex={0}
       onKeyDown={handleKeyDown}
-      className="flex flex-col outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      className="flex h-full min-h-0 flex-col outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
     >
-      <div className="relative aspect-video overflow-hidden bg-black">
+      <div className="relative min-h-0 flex-1 overflow-hidden bg-black">
         <video
           ref={videoRef}
           src={videoUrl}

@@ -51,10 +51,18 @@ export async function getMeetingById(id: string) {
     duration_seconds: number | null;
     participants: string[];
     transcript: { segments: TranscriptSegment[] };
+    ai_summary: string | null;
   }>(`/api/meetings/${id}`);
 
-  const { success, meeting, video_url, duration_seconds, participants, transcript } =
-    response.data;
+  const {
+    success,
+    meeting,
+    video_url,
+    duration_seconds,
+    participants,
+    transcript,
+    ai_summary,
+  } = response.data;
 
   return {
     success,
@@ -63,6 +71,7 @@ export async function getMeetingById(id: string) {
     durationSeconds: duration_seconds,
     participants,
     transcriptSegments: transcript.segments,
+    aiSummary: ai_summary ?? null,
   } satisfies MeetingDetail & { success: boolean };
 }
 

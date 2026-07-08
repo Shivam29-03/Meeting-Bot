@@ -42,8 +42,6 @@ type MeetingDetailContentProps = {
   initialAiSummary?: string | null;
 };
 
-type DetailTab = "transcript" | "summary";
-
 const ACTIVE_STATUSES = new Set<Meeting["status"]>(["requested", "joining", "recording"]);
 
 function formatDateTime(value: string) {
@@ -129,7 +127,6 @@ export function MeetingDetailContent({
   const [participants, setParticipants] = useState<string[]>(initialParticipants);
   const [summary, setSummary] = useState<string | null>(initialAiSummary);
   const [activeDisplayIndex, setActiveDisplayIndex] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<DetailTab>("transcript");
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -285,68 +282,99 @@ export function MeetingDetailContent({
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="flex flex-col gap-6">
-          <Card className="gap-0 overflow-hidden border-slate-200 p-0 shadow-sm ring-0">
-            <div
-              className={cn(
-                "relative overflow-hidden bg-black",
-                !videoUrl && "aspect-video",
-              )}
-            >
-              {videoUrl ? (
-                <MeetingVideoPlayer
-                  videoRef={videoRef}
-                  videoUrl={videoUrl}
-                  meetingId={meeting.id}
+      <div
+        className={cn(
+          "grid gap-6 lg:grid-cols-2",
+          isFailedNoRecording && "lg:grid-cols-1",
+        )}
+      >
+        <Card className="flex overflow-hidden border-slate-200 p-0 shadow-sm ring-0 lg:h-[26rem]">
+          <div className="relative h-full min-h-0 flex-1 overflow-hidden bg-black">
+            {videoUrl ? (
+              <MeetingVideoPlayer
+                videoRef={videoRef}
+                videoUrl={videoUrl}
+                meetingId={meeting.id}
+                displayEntries={displayEntries}
+                activeDisplayIndex={activeDisplayIndex}
+                onActiveDisplayIndexChange={setActiveDisplayIndex}
+              />
+            ) : isActive ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-slate-800 via-slate-900 to-brand-navy px-6 text-white">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold tracking-wide uppercase">
+                  <span className="size-2 animate-pulse rounded-full bg-red-400" />
+                  {meeting.status === "recording" ? "Recording in progress" : "Bot joining meeting"}
+                </span>
+                <p className="max-w-sm text-center text-sm text-slate-300">
+                  Video will be available here once the meeting ends and processing completes.
+                </p>
+              </div>
+            ) : isFailed ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-gradient-to-br from-slate-800 via-slate-900 to-brand-navy px-6 text-center text-white">
+                <div className="flex size-12 items-center justify-center rounded-full bg-red-500/15 text-red-300">
+                  <AlertTriangle className="size-6" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-base font-semibold">{failureContent.title}</p>
+                  <p className="mx-auto max-w-sm text-sm text-slate-300">
+                    {failureContent.message}
+                  </p>
+                </div>
+                <Link
+                  href={retryHref}
+                  className="inline-flex h-9 items-center gap-2 rounded-xl bg-white/10 px-4 text-sm font-semibold text-white transition-colors hover:bg-white/20"
+                >
+                  <RefreshCw className="size-4" />
+                  Try again
+                </Link>
+              </div>
+            ) : (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-slate-800 via-slate-900 to-brand-navy px-6 text-center text-white">
+                <p className="text-sm font-semibold">Video not available</p>
+                <p className="max-w-sm text-sm text-slate-300">
+                  The recording is still processing or was not saved for this meeting.
+                </p>
+              </div>
+            )}
+          </div>
+        </Card>
+
+        {isFailedNoRecording ? null : (
+          <Card className="flex flex-col overflow-hidden border-slate-200 shadow-sm ring-0 lg:h-[26rem]">
+            <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-2">
+                <h2 className="px-3 py-3 text-sm font-semibold text-foreground">Transcript</h2>
+                {canDownloadTranscript ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mr-1 shrink-0 gap-2 text-primary hover:text-primary"
+                    onClick={handleDownloadTranscript}
+                  >
+                    <Download className="size-4" />
+                  </Button>
+                ) : null}
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-hidden">
+                <MeetingTranscriptPanel
+                  meeting={meeting}
                   displayEntries={displayEntries}
                   activeDisplayIndex={activeDisplayIndex}
-                  onActiveDisplayIndexChange={setActiveDisplayIndex}
+                  hasVideo={Boolean(videoUrl)}
+                  onSeek={seekToEntry}
+                  fillHeight
                 />
-              ) : isActive ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-slate-800 via-slate-900 to-brand-navy text-white">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold tracking-wide uppercase">
-                    <span className="size-2 animate-pulse rounded-full bg-red-400" />
-                    {meeting.status === "recording" ? "Recording in progress" : "Bot joining meeting"}
-                  </span>
-                  <p className="max-w-sm text-center text-sm text-slate-300">
-                    Video will be available here once the meeting ends and processing completes.
-                  </p>
-                </div>
-              ) : isFailed ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-gradient-to-br from-slate-800 via-slate-900 to-brand-navy px-6 text-center text-white">
-                  <div className="flex size-12 items-center justify-center rounded-full bg-red-500/15 text-red-300">
-                    <AlertTriangle className="size-6" />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <p className="text-base font-semibold">{failureContent.title}</p>
-                    <p className="mx-auto max-w-sm text-sm text-slate-300">
-                      {failureContent.message}
-                    </p>
-                  </div>
-                  <Link
-                    href={retryHref}
-                    className="inline-flex h-9 items-center gap-2 rounded-xl bg-white/10 px-4 text-sm font-semibold text-white transition-colors hover:bg-white/20"
-                  >
-                    <RefreshCw className="size-4" />
-                    Try again
-                  </Link>
-                </div>
-              ) : (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-slate-800 via-slate-900 to-brand-navy px-6 text-center text-white">
-                  <p className="text-sm font-semibold">Video not available</p>
-                  <p className="max-w-sm text-sm text-slate-300">
-                    The recording is still processing or was not saved for this meeting.
-                  </p>
-                </div>
-              )}
-            </div>
+              </div>
+            </CardContent>
           </Card>
+        )}
 
-          <Card className="border-slate-200 shadow-sm ring-0">
-            <CardContent className="py-5">
-              <h2 className="text-sm font-semibold text-foreground">Meeting details</h2>
-              <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2">
+        <Card className="flex flex-col overflow-hidden border-slate-200 shadow-sm ring-0 lg:h-[26rem]">
+          <CardContent className="flex min-h-0 flex-1 flex-col py-5">
+            <h2 className="shrink-0 text-sm font-semibold text-foreground">Meeting details</h2>
+            <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
+              <dl className="grid gap-4 text-sm">
                 <div className="flex items-start gap-3">
                   <Calendar className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                   <div>
@@ -357,20 +385,20 @@ export function MeetingDetailContent({
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
-                  <Clock className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                  <div>
-                    <dt className="text-muted-foreground">Duration</dt>
-                    <dd className="font-medium text-foreground">
-                      {formatDurationLabel(meeting, durationSeconds, isActive)}
-                    </dd>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
                   <Users className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                   <div>
                     <dt className="text-muted-foreground">Participants</dt>
                     <dd className="font-medium text-foreground">
                       {formatParticipantsLabel(participants, isActive)}
+                    </dd>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Clock className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <div>
+                    <dt className="text-muted-foreground">Duration</dt>
+                    <dd className="font-medium text-foreground">
+                      {formatDurationLabel(meeting, durationSeconds, isActive)}
                     </dd>
                   </div>
                 </div>
@@ -386,101 +414,32 @@ export function MeetingDetailContent({
                   </div>
                 </div>
               </dl>
+            </div>
 
-              {isActive ? (
-                <a
-                  href={meeting.meetUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-5 inline-flex h-10 w-full items-center justify-center rounded-xl bg-slate-900 text-sm font-semibold text-white hover:bg-slate-800 sm:w-auto sm:px-8"
-                >
-                  Join Call
-                </a>
-              ) : null}
-            </CardContent>
-          </Card>
-        </div>
+            {isActive ? (
+              <a
+                href={meeting.meetUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-5 inline-flex h-10 w-full shrink-0 items-center justify-center rounded-xl bg-slate-900 text-sm font-semibold text-white hover:bg-slate-800 sm:w-auto sm:px-8"
+              >
+                Join Call
+              </a>
+            ) : null}
+          </CardContent>
+        </Card>
 
-        <aside className="flex flex-col gap-4 max-h-[90vh]">
-          {isFailedNoRecording ? null : (
-            <Card className="sticky top-6 flex max-h-[calc(100vh-6rem)] flex-col overflow-hidden border-slate-200 shadow-sm ring-0">
-              <CardContent className="flex min-h-0 flex-1 flex-col p-0">
-                <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200">
-                  <div className="flex">
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab("transcript")}
-                      className={cn(
-                        "px-5 py-3 text-sm font-semibold transition-colors",
-                        activeTab === "transcript"
-                          ? "border-b-2 border-primary text-primary"
-                          : "text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      Transcript
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab("summary")}
-                      className={cn(
-                        "px-5 py-3 text-sm font-semibold transition-colors",
-                        activeTab === "summary"
-                          ? "border-b-2 border-primary text-primary"
-                          : "text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      AI Summary
-                    </button>
-                  </div>
-                  {activeTab === "transcript" && canDownloadTranscript ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="mr-3 shrink-0 gap-2 text-primary hover:text-primary"
-                      onClick={handleDownloadTranscript}
-                    >
-                      <Download className="size-4" />
-
-                    </Button>
-                  ) : null}
-                </div>
-
-                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                  {activeTab === "transcript" ? (
-                    <MeetingTranscriptPanel
-                      meeting={meeting}
-                      displayEntries={displayEntries}
-                      activeDisplayIndex={activeDisplayIndex}
-                      hasVideo={Boolean(videoUrl)}
-                      onSeek={seekToEntry}
-                      fillHeight
-                    />
-                  ) : (
-                    <div className="overflow-y-auto p-5 sm:p-6">
-                      <SummaryPanel meeting={meeting} summary={summary} />
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          <Card className="border-slate-200 bg-gradient-to-br from-primary/5 to-indigo-50 shadow-sm ring-0">
-            <CardContent className="py-5">
-              <div className="flex items-center gap-2 text-primary">
-                <Sparkles className="size-4" />
-                <h2 className="text-sm font-semibold">AI insights</h2>
-              </div>
-              <p className="mt-2 text-sm text-muted-foreground">
-                {isCompleted
-                  ? "Summary and action items will appear here once AI processing is enabled."
-                  : isActive
-                    ? "Insights will be generated after the meeting ends."
-                    : "No insights available for this meeting."}
-              </p>
-            </CardContent>
-          </Card>
-        </aside>
+        <Card className="flex flex-col overflow-hidden border-slate-200 shadow-sm ring-0 lg:h-[26rem]">
+          <CardContent className="flex min-h-0 flex-1 flex-col py-5">
+            <div className="mb-4 flex shrink-0 items-center gap-2 text-primary">
+              <Sparkles className="size-4" />
+              <h2 className="text-sm font-semibold">AI Summary</h2>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <SummaryPanel meeting={meeting} summary={summary} />
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

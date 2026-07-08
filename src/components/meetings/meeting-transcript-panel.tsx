@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronUp, Search } from "lucide-react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { Search } from "lucide-react";
 
-import { Button, Input } from "@/components/ui";
+import { Input } from "@/components/ui";
 import type { Meeting } from "@/lib/meeting-types";
 import {
   getSpeakerInitials,
@@ -60,19 +60,7 @@ export function MeetingTranscriptPanel({
   fillHeight = false,
 }: MeetingTranscriptPanelProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [syncWithAudio, setSyncWithAudio] = useState(hasVideo);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const entryRefs = useRef<Array<HTMLDivElement | null>>([]);
-  const autoScrollUntilRef = useRef(0);
-
-  const beginAutoScroll = useCallback(() => {
-    autoScrollUntilRef.current = Date.now() + 1500;
-  }, []);
-
-  const isAutoScrolling = useCallback(
-    () => Date.now() < autoScrollUntilRef.current,
-    [],
-  );
 
   const filteredEntries = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -94,44 +82,10 @@ export function MeetingTranscriptPanel({
 
   const handleEntryClick = useCallback(
     (entry: DisplayTranscriptEntry, displayIndex: number) => {
-      setSyncWithAudio(true);
       onSeek(entry, displayIndex);
     },
     [onSeek],
   );
-
-  const handleScroll = useCallback(() => {
-    if (!isAutoScrolling()) {
-      setSyncWithAudio(false);
-    }
-  }, [isAutoScrolling]);
-
-  const handleSyncClick = useCallback(() => {
-    setSyncWithAudio(true);
-    if (activeDisplayIndex === null) {
-      return;
-    }
-
-    const element = entryRefs.current[activeDisplayIndex];
-    if (element) {
-      beginAutoScroll();
-      element.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    }
-  }, [activeDisplayIndex, beginAutoScroll]);
-
-  useEffect(() => {
-    if (!syncWithAudio || activeDisplayIndex === null) {
-      return;
-    }
-
-    const element = entryRefs.current[activeDisplayIndex];
-    if (!element) {
-      return;
-    }
-
-    beginAutoScroll();
-    element.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [activeDisplayIndex, beginAutoScroll, syncWithAudio]);
 
   if (displayEntries.length === 0) {
     if (meeting.status === "completed") {
@@ -176,8 +130,6 @@ export function MeetingTranscriptPanel({
       </div>
 
       <div
-        ref={scrollContainerRef}
-        onScroll={handleScroll}
         className={cn(
           "overflow-y-auto px-4 py-2 sm:px-5",
           fillHeight ? "min-h-0 flex-1" : "max-h-[520px]",
@@ -256,21 +208,6 @@ export function MeetingTranscriptPanel({
           </div>
         )}
       </div>
-
-      {hasVideo && !syncWithAudio ? (
-        <div className="flex shrink-0 justify-center border-t border-slate-100 px-4 py-3">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="rounded-full px-4 shadow-sm"
-            onClick={handleSyncClick}
-          >
-            <ChevronUp className="size-4" />
-            Sync with audio
-          </Button>
-        </div>
-      ) : null}
     </div>
   );
 }
