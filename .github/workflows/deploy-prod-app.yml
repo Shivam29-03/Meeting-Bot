@@ -1,0 +1,104 @@
+name: Prod Deploy
+
+on:
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: metawurks
+  REGION: us-central1
+  REPOSITORY: prod-meeting-bot
+  IMAGE_NAME: meeting-bot
+  ENVIRONMENT: prod
+  SERVICE_ACCOUNT: prod-meeting-bot@metawurks.iam.gserviceaccount.com
+  APP_URL: ${{ vars.PROD_NEXTAUTH_URL }}
+  PUBLIC_API_URL: ${{ vars.PROD_NEXT_PUBLIC_API_URL }}
+  RECALL_REGION: ${{ vars.PROD_RECALL_REGION || 'ap-northeast-1' }}
+
+jobs:
+  deploy:
+    name: Build, Push, and Deploy (Production)
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY_PROD }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Validate deployment configuration
+        run: |
+          test -n "${{ env.APP_URL }}" || (echo "PROD_NEXTAUTH_URL repository variable is required" && exit 1)
+          test -n "${{ env.PUBLIC_API_URL }}" || (echo "PROD_NEXT_PUBLIC_API_URL repository variable is required" && exit 1)
+
+      - name: Ensure Artifact Registry repository
+        run: |
+          gcloud artifacts repositories create ${{ env.REPOSITORY }} \
+            --repository-format=docker \
+            --location=${{ env.REGION }} \
+            --project=${{ env.PROJECT_ID }} \
+            --description="Meeting Bot prod docker repo" || echo "repo may exist"
+
+      - name: Configure Docker to use gcloud as credential helper
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        run: |
+          IMAGE_URL=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}
+          TAG=latest
+          docker build \
+            --build-arg ENVIRONMENT=${{ env.ENVIRONMENT }} \
+            --build-arg NEXTAUTH_URL="${{ env.APP_URL }}" \
+            --build-arg NEXT_PUBLIC_API_URL="${{ env.PUBLIC_API_URL }}" \
+            --platform linux/amd64 \
+            -t $IMAGE_URL:$TAG .
+
+      - name: Push Docker image to Artifact Registry
+        run: |
+          IMAGE_URL=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}
+          TAG=latest
+          docker push $IMAGE_URL:$TAG
+
+      - name: Deploy to Cloud Run
+        run: |
+          IMAGE_URL=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}
+          TAG=latest
+          SERVICE_NAME="${{ env.ENVIRONMENT }}-meeting-bot"
+          echo "Deploying Meeting Bot to service: $SERVICE_NAME"
+          gcloud run deploy $SERVICE_NAME \
+            --image=$IMAGE_URL:$TAG \
+            --region=${{ env.REGION }} \
+            --service-account=${{ env.SERVICE_ACCOUNT }} \
+            --memory=2Gi \
+            --cpu=2 \
+            --min-instances=0 \
+            --max-instances=10 \
+            --concurrency=100 \
+            --timeout=900 \
+            --port=3000 \
+            --execution-environment=gen2 \
+            --allow-unauthenticated \
+            --set-env-vars="NODE_ENV=production,NEXTAUTH_URL=${{ env.APP_URL }},NEXT_PUBLIC_API_URL=${{ env.PUBLIC_API_URL }},RECALL_REGION=${{ env.RECALL_REGION }}" \
+            --update-secrets="NEXTAUTH_SECRET=${{ env.ENVIRONMENT }}-meeting-bot-nextauth-secret:latest,GOOGLE_CLIENT_ID=${{ env.ENVIRONMENT }}-meeting-bot-google-client-id:latest,GOOGLE_CLIENT_SECRET=${{ env.ENVIRONMENT }}-meeting-bot-google-client-secret:latest,MONGODB_URI=${{ env.ENVIRONMENT }}-meeting-bot-mongodb-uri:latest,RECALL_API=${{ env.ENVIRONMENT }}-meeting-bot-recall-api:latest,RECALL_WEBHOOK_SECRET=${{ env.ENVIRONMENT }}-meeting-bot-recall-webhook-secret:latest,OPENAI_API_KEY=${{ env.ENVIRONMENT }}-meeting-bot-openai-api-key:latest" \
+            --quiet
+
+      - name: Show deployment URLs
+        run: |
+          SERVICE_NAME="${{ env.ENVIRONMENT }}-meeting-bot"
+          APP_URL=$(gcloud run services describe $SERVICE_NAME --region=${{ env.REGION }} --format='value(status.url)')
+          echo "Production deployment successful"
+          echo "Environment: ${{ env.ENVIRONMENT }}"
+          echo "Service: $SERVICE_NAME"
+          echo "URL: $APP_URL"
