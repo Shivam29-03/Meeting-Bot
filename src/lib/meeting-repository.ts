@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { after } from "next/server";
 
 import Meeting from "@/models/Meeting";
 import MeetingTranscript from "@/models/MeetingTranscript";
@@ -21,11 +22,14 @@ import {
   type RecallBotDetails,
 } from "@/lib/recall";
 import { getBotNameForUser } from "@/lib/user-settings";
+import { buildRecapRecipients } from "@/lib/recap-recipients";
+import { processMeetingRecap } from "@/lib/meeting-recap-email";
 
 type CreateMeetingInput = {
   userId: string;
   meetUrl: string;
   title?: string;
+  recipientEmails?: unknown;
 };
 
 const ACTIVE_DB_STATUSES: DbMeetingStatus[] = [
@@ -281,8 +285,12 @@ export async function createMeeting({
   userId,
   meetUrl,
   title,
+  recipientEmails,
 }: CreateMeetingInput): Promise<MeetingDto> {
   await ensureDb();
+
+  // Validate/normalize/dedupe recipients server-side; organizer always included.
+  const recapRecipients = buildRecapRecipients(recipientEmails, userId);
 
   const botName = await getBotNameForUser(userId);
 
@@ -313,6 +321,7 @@ export async function createMeeting({
     meeting_url: meetUrl,
     title: title?.trim() || titleFromUrl(meetUrl),
     status: initialStatus,
+    recap_recipients: recapRecipients,
   }).catch(async (error) => {
     try {
       await deleteRecallBot(recallBot.id);
@@ -500,6 +509,23 @@ export async function updateMeetingStatusFromRecallWebhook(payload: any) {
       ).lean();
 
       console.log(`[Webhook] Successfully processed transcript.done for meeting: ${meetingDoc._id}`);
+
+      // Recap email: run AFTER the webhook response so Recall never waits on
+      // OpenAI/Resend. The processor is independently idempotent (atomic claim),
+      // so a repeated transcript.done or an after() re-run cannot double-send.
+      // A recap failure here never affects transcript persistence above.
+      const recapMeetingId = meetingDoc._id.toString();
+      after(async () => {
+        try {
+          await processMeetingRecap(recapMeetingId);
+        } catch (error) {
+          console.error(
+            `[Recap] Failed to process recap for meeting ${recapMeetingId}:`,
+            error,
+          );
+        }
+      });
+
       return meeting ? toMeetingDto(meeting) : null;
 
     } catch (error) {

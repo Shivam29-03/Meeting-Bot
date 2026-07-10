@@ -117,6 +117,7 @@ export async function POST(request: Request) {
       userId,
       meetUrl,
       title: typeof body.title === "string" ? body.title : undefined,
+      recipientEmails: body.recipientEmails,
     });
 
     return NextResponse.json({

@@ -121,6 +121,33 @@ export function SettingsPageContent({ initialSettings }: SettingsPageContentProp
     }));
   };
 
+  // Email recap gates whether meeting recap emails are sent, so it must persist
+  // immediately (not only on "Save Changes"). Persists via the existing
+  // settings API using the current settings snapshot; reverts on failure.
+  const persistEmailRecap = async (next: boolean) => {
+    const previous = emailRecap;
+    setEmailRecap(next);
+    setError(null);
+
+    try {
+      const response = await saveSettings({
+        botName,
+        autoRecord,
+        autoJoin,
+        transcription,
+        aiSummary,
+        emailRecap: next,
+        meetingReminders,
+        botStatusAlerts,
+        integrations,
+      });
+      setEmailRecap(response.settings.emailRecap);
+    } catch (saveError) {
+      setEmailRecap(previous);
+      setError(getApiErrorMessage(saveError, "Failed to save Email recap preference"));
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setError(null);
@@ -282,9 +309,9 @@ export function SettingsPageContent({ initialSettings }: SettingsPageContentProp
             <div className="mt-2 divide-y divide-slate-100">
               <ToggleSwitch
                 checked={emailRecap}
-                onChange={setEmailRecap}
+                onChange={(next) => void persistEmailRecap(next)}
                 label="Email recap"
-                description="Daily digest of recorded meetings"
+                description="Email the meeting summary and transcript to recipients after each meeting"
               />
               <ToggleSwitch
                 checked={meetingReminders}

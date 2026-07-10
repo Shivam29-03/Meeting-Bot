@@ -1,5 +1,36 @@
 import mongoose, { Schema } from "mongoose";
 
+const RecapDeliverySchema = new Schema(
+  {
+    email: {
+      type: String,
+      required: true,
+    },
+    status: {
+      type: String,
+      enum: ["queued", "sent", "failed"],
+      default: "queued",
+    },
+    attempts: {
+      type: Number,
+      default: 0,
+    },
+    provider_message_id: {
+      type: String,
+      default: null,
+    },
+    last_error: {
+      type: String,
+      default: null,
+    },
+    sent_at: {
+      type: Date,
+      default: null,
+    },
+  },
+  { _id: false },
+);
+
 const MeetingSchema = new Schema(
   {
     user_id: {
@@ -60,6 +91,38 @@ const MeetingSchema = new Schema(
     ai_summary_generated_at: {
       type: Date,
       default: null,
+    },
+
+    // --- Recap email delivery (feat/meeting-participant-email) ---
+    // Organizer-supplied recap recipients for this exact meeting. The organizer
+    // email is always included server-side. Validated/normalized before persist.
+    recap_recipients: {
+      type: [String],
+      default: [],
+    },
+
+    recap_state: {
+      type: String,
+      enum: ["pending", "processing", "sent", "partial", "failed", "skipped"],
+      default: "pending",
+    },
+
+    // Timestamp of the last claim, used to recover stale "processing" state.
+    recap_claimed_at: {
+      type: Date,
+      default: null,
+    },
+
+    recap_processed_at: {
+      type: Date,
+      default: null,
+    },
+
+    // Per-recipient delivery state so failed recipients can be retried
+    // independently without re-sending to those already delivered.
+    recap_deliveries: {
+      type: [RecapDeliverySchema],
+      default: [],
     },
   },
   {
