@@ -1,47 +1,17 @@
 import { connectDB } from "@/lib/mongodb";
 import {
   DEFAULT_BOT_NAME,
-  defaultUserSettings,
-  type IntegrationId,
   type SaveUserSettingsPayload,
   type UserSettings,
 } from "@/lib/user-settings-types";
+import {
+  mapUserSettingsDocToDto,
+  type UserSettingsDocument,
+} from "@/lib/user-settings-mapper";
 import UserSettingsModel from "@/models/UserSettings";
 
-type UserSettingsDocument = {
-  user_id: string;
-  bot_name?: string;
-  auto_record?: boolean;
-  auto_join?: boolean;
-  transcription?: boolean;
-  ai_summary?: boolean;
-  email_recap?: boolean;
-  meeting_reminders?: boolean;
-  bot_status_alerts?: boolean;
-  integrations?: Partial<Record<IntegrationId, boolean>>;
-};
-
 function toUserSettingsDto(doc: UserSettingsDocument | null): UserSettings {
-  if (!doc) {
-    return defaultUserSettings;
-  }
-
-  return {
-    botName: doc.bot_name?.trim() ?? "",
-    autoRecord: doc.auto_record ?? false,
-    autoJoin: doc.auto_join ?? false,
-    transcription: doc.transcription ?? false,
-    aiSummary: doc.ai_summary ?? false,
-    emailRecap: doc.email_recap ?? false,
-    meetingReminders: doc.meeting_reminders ?? false,
-    botStatusAlerts: doc.bot_status_alerts ?? false,
-    integrations: {
-      calendar: doc.integrations?.calendar ?? false,
-      meet: doc.integrations?.meet ?? false,
-      zoom: doc.integrations?.zoom ?? false,
-      teams: doc.integrations?.teams ?? false,
-    },
-  };
+  return mapUserSettingsDocToDto(doc);
 }
 
 export async function getUserSettings(userId: string): Promise<UserSettings> {

@@ -37,4 +37,5 @@ export type MeetingDetail = {
 export type CreateMeetingPayload = {
   title?: string;
   meetUrl: string;
+  recipientEmails?: string[];
 };

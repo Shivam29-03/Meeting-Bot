@@ -69,6 +69,7 @@ export function MeetingsPageContent({ initialMeetings }: MeetingsPageContentProp
   );
   const [modalOpen, setModalOpen] = useState(false);
   const [meetUrl, setMeetUrl] = useState("");
+  const [recipients, setRecipients] = useState("");
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
 
@@ -121,7 +122,15 @@ export function MeetingsPageContent({ initialMeetings }: MeetingsPageContentProp
     setToast(null);
 
     try {
-      const data = await createMeeting({ meetUrl: trimmedUrl });
+      const recipientEmails = recipients
+        .split(/[\n,;]+/)
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+      const data = await createMeeting({
+        meetUrl: trimmedUrl,
+        ...(recipientEmails.length > 0 ? { recipientEmails } : {}),
+      });
       if (data.meeting) {
         setMeetings((current) => [data.meeting, ...current]);
       } else {
@@ -129,6 +138,7 @@ export function MeetingsPageContent({ initialMeetings }: MeetingsPageContentProp
         setMeetings(refreshed.meetings ?? []);
       }
       setMeetUrl("");
+      setRecipients("");
       setModalOpen(false);
       setToast({
         type: "success",
@@ -250,9 +260,11 @@ export function MeetingsPageContent({ initialMeetings }: MeetingsPageContentProp
       <NewMeetingModal
         open={modalOpen}
         meetUrl={meetUrl}
+        recipients={recipients}
         loading={loading}
         onClose={() => setModalOpen(false)}
         onMeetUrlChange={setMeetUrl}
+        onRecipientsChange={setRecipients}
         onSubmit={handleStartRecording}
       />
     </div>

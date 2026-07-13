@@ -9,7 +9,7 @@ import type { MeetingDetail, TranscriptSegment } from "@/lib/meeting-types";
 import { getRecallBot } from "@/lib/recall";
 import Meeting from "@/models/Meeting";
 import MeetingTranscript from "@/models/MeetingTranscript";
-import { generateMeetingSummary } from "@/lib/ai-summary";
+import { ensureMeetingSummary } from "@/lib/ensure-summary";
 
 async function fetchTranscriptSegments(meetingId: string): Promise<TranscriptSegment[]> {
   try {
@@ -51,12 +51,7 @@ if (
   meeting.status === "completed"
 ) {
   try {
-    aiSummary = await generateMeetingSummary(transcriptSegments);
-
-    await Meeting.findByIdAndUpdate(meetingDoc._id, {
-      ai_summary: aiSummary,
-      ai_summary_generated_at: new Date(),
-    });
+    aiSummary = await ensureMeetingSummary(meetingDoc._id.toString());
   } catch (error) {
     console.error("[Meeting Detail] Failed to generate AI summary:", error);
   }

@@ -7,18 +7,22 @@ import { Button, Input } from "@/components/ui";
 type NewMeetingModalProps = {
   open: boolean;
   meetUrl: string;
+  recipients: string;
   loading: boolean;
   onClose: () => void;
   onMeetUrlChange: (value: string) => void;
+  onRecipientsChange: (value: string) => void;
   onSubmit: () => void;
 };
 
 export function NewMeetingModal({
   open,
   meetUrl,
+  recipients,
   loading,
   onClose,
   onMeetUrlChange,
+  onRecipientsChange,
   onSubmit,
 }: NewMeetingModalProps) {
   if (!open) return null;
@@ -75,6 +79,28 @@ export function NewMeetingModal({
                 autoFocus
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <label
+              htmlFor="new-recap-recipients"
+              className="text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+            >
+              Recap recipients
+            </label>
+            <textarea
+              id="new-recap-recipients"
+              value={recipients}
+              onChange={(event) => onRecipientsChange(event.target.value)}
+              placeholder="alice@example.com, bob@example.com"
+              rows={2}
+              className="min-h-[64px] w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-foreground outline-none focus:border-slate-400"
+            />
+            <p className="text-xs text-muted-foreground">
+              These addresses receive the meeting summary and transcript when the
+              meeting ends. Separate multiple emails with commas. Your own email is
+              always included.
+            </p>
           </div>
 
           <Button

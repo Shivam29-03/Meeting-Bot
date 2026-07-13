@@ -4,6 +4,10 @@ import { Webhook } from "svix";
 import { env } from "@/lib/env";
 import { updateMeetingStatusFromRecallWebhook } from "@/lib/meeting-repository";
 
+// Recap work runs via after() after the response; give the invocation room for
+// summary generation + per-recipient email sends. Hosts may cap this lower.
+export const maxDuration = 60;
+
 function extractBotIdFromPayload(payload: {
   data?: { bot?: { id?: string }; bot_id?: string };
 }) {
